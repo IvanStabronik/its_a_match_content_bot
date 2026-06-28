@@ -10,6 +10,7 @@ import {
   addUsageError,
   getCommandList,
   pollFormatError,
+  queueWarningIfNeeded,
   textTooLongError,
   WELCOME_MESSAGE,
 } from '../messages.js';
@@ -52,7 +53,10 @@ export function registerCommandHandlers(
         caption: text,
         created_by: String(ctx.from!.id),
       });
-      await ctx.reply(`✅ Кандидат создан. ID: ${post.id}`);
+      const pendingCount = posts.countPending();
+      await ctx.reply(
+        `✅ Кандидат создан. ID: ${post.id}${queueWarningIfNeeded(pendingCount)}`,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error('commands', 'Failed to create candidate via /add', { error: msg });

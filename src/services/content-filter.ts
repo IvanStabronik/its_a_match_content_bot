@@ -55,7 +55,7 @@ export function addRiskWarning(
   warnings.push({
     type: 'risk_score',
     risk_score: riskScore,
-    message: `Risk Score: ${riskScore}/10 — ${riskReason}`,
+    message: `Риск: ${riskScore}/10 — ${riskReason}`,
   });
   return JSON.stringify(warnings);
 }

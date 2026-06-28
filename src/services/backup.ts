@@ -10,8 +10,19 @@ export interface BackupResult {
 }
 
 export function createBackup(db: Database.Database, backupDir: string): BackupResult {
-  const checkpoint = db.pragma('wal_checkpoint(FULL)') as Array<{ busy: number; log: number; checkpointed: number }>;
-  logger.info('backup', 'WAL checkpoint completed', { checkpoint: checkpoint[0] });
+  const checkpoint = db.pragma('wal_checkpoint(FULL)') as Array<{
+    busy: number;
+    log: number;
+    checkpointed: number;
+  }>;
+  const result = checkpoint[0];
+  logger.info('backup', 'WAL checkpoint completed', { checkpoint: result });
+
+  if (!result || result.busy > 0) {
+    throw new Error(
+      'WAL checkpoint busy: database has active readers/writers; backup aborted',
+    );
+  }
 
   const dbPath = db.name;
   if (!fs.existsSync(dbPath)) {

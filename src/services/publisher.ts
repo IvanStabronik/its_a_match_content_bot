@@ -7,6 +7,8 @@ import { buildPostLink, sendByType } from './telegram.js';
 
 const MANUAL_RETRY_DELAY_MS = 5000;
 const SCHEDULED_RETRY_DELAY_MS = 2 * 60 * 1000;
+const MANUAL_SEND_ATTEMPTS = 3;
+const SCHEDULED_SEND_ATTEMPTS = 3;
 
 export class PublisherService {
   constructor(
@@ -29,38 +31,44 @@ export class PublisherService {
     }
 
     const { originalStatus } = claim;
-    let lastError: unknown;
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const post = this.posts.getById(postId)!;
-        const messageId = await sendByType(api, this.channelUsername, post);
-        const updated = this.posts.markPosted(postId, messageId);
-        const link = buildPostLink(this.channelUsername, messageId);
+    try {
+      const post = this.posts.getById(postId)!;
+      const messageId = await sendWithRetries(
+        api,
+        this.channelUsername,
+        post,
+        MANUAL_SEND_ATTEMPTS,
+        MANUAL_RETRY_DELAY_MS,
+      );
+      const updated = this.posts.markPosted(postId, messageId);
+      const link = buildPostLink(this.channelUsername, messageId);
 
-        logger.info('publisher', 'Post published manually', { postId, messageId });
+      logger.info('publisher', 'Post published manually', { postId, messageId });
 
-        if (notifyAdminId && bot) {
-          await bot.api.sendMessage(notifyAdminId, `✅ Опубликовано!\nID: ${postId}\n${link}`);
-        }
-
-        return { post: updated, link };
-      } catch (err) {
-        lastError = err;
-        if (attempt < 3) {
-          await sleep(MANUAL_RETRY_DELAY_MS);
-        }
+      if (notifyAdminId && bot) {
+        await notifyAdminSafe(
+          bot,
+          notifyAdminId,
+          `✅ Опубликовано!\nID: ${postId}\n${link}`,
+        );
       }
-    }
 
-    const errorMsg = lastError instanceof Error ? lastError.message : String(lastError);
-    logger.error('publisher', 'Manual publish failed', { postId, error: errorMsg });
-    this.posts.releasePublishingAfterManualFailure(postId, originalStatus, errorMsg);
+      return { post: updated, link };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      logger.error('publisher', 'Manual publish failed', { postId, error: errorMsg });
+      this.posts.releasePublishingAfterManualFailure(postId, originalStatus, errorMsg);
 
-    if (notifyAdminId && bot) {
-      await bot.api.sendMessage(notifyAdminId, `❌ Ошибка публикации ID ${postId}: ${errorMsg}`);
+      if (notifyAdminId && bot) {
+        await notifyAdminSafe(
+          bot,
+          notifyAdminId,
+          `❌ Ошибка публикации ID ${postId}: ${errorMsg}`,
+        );
+      }
+      throw new Error(errorMsg);
     }
-    throw new Error(errorMsg);
   }
 
   async publishScheduled(
@@ -82,38 +90,71 @@ export class PublisherService {
       return;
     }
 
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const post = this.posts.getById(postId)!;
-        const messageId = await sendByType(api, this.channelUsername, post);
-        this.posts.markPosted(postId, messageId);
-        const link = buildPostLink(this.channelUsername, messageId);
-        logger.info('publisher', 'Scheduled post published', { postId, messageId });
-        for (const adminId of adminIds) {
-          await bot.api.sendMessage(
-            adminId,
-            `📅 Запланированный пост опубликован!\nID: ${postId}\n${link}`,
-          );
-        }
-        return;
-      } catch (err) {
-        lastError = err;
-        if (attempt < 3) {
-          await sleep(SCHEDULED_RETRY_DELAY_MS);
-        }
+    try {
+      const post = this.posts.getById(postId)!;
+      const messageId = await sendWithRetries(
+        api,
+        this.channelUsername,
+        post,
+        SCHEDULED_SEND_ATTEMPTS,
+        SCHEDULED_RETRY_DELAY_MS,
+      );
+      this.posts.markPosted(postId, messageId);
+      const link = buildPostLink(this.channelUsername, messageId);
+      logger.info('publisher', 'Scheduled post published', { postId, messageId });
+
+      for (const adminId of adminIds) {
+        await notifyAdminSafe(
+          bot,
+          adminId,
+          `📅 Запланированный пост опубликован!\nID: ${postId}\n${link}`,
+        );
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.posts.markScheduledPublishFailed(postId, errorMsg);
+      logger.error('publisher', 'Scheduled publish failed', { postId, error: errorMsg });
+
+      for (const adminId of adminIds) {
+        await notifyAdminSafe(
+          bot,
+          adminId,
+          `❌ Ошибка публикации запланированного поста ID ${postId}: ${errorMsg}`,
+        );
       }
     }
+  }
+}
 
-    const errorMsg = lastError instanceof Error ? lastError.message : String(lastError);
-    this.posts.markScheduledPublishFailed(postId, errorMsg);
-    logger.error('publisher', 'Scheduled publish failed', { postId, error: errorMsg });
-    for (const adminId of adminIds) {
-      await bot.api.sendMessage(
-        adminId,
-        `❌ Ошибка публикации запланированного поста ID ${postId}: ${errorMsg}`,
-      );
+async function sendWithRetries(
+  api: Api<RawApi>,
+  channelUsername: string,
+  post: Post,
+  maxAttempts: number,
+  delayMs: number,
+): Promise<number> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await sendByType(api, channelUsername, post);
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts) {
+        await sleep(delayMs);
+      }
     }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function notifyAdminSafe(bot: Bot, adminId: number, message: string): Promise<void> {
+  try {
+    await bot.api.sendMessage(adminId, message);
+  } catch (err) {
+    logger.error('publisher', 'Admin notification failed', {
+      adminId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

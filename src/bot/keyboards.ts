@@ -10,21 +10,21 @@ export function moderationKeyboard(
   aiEnabled: boolean,
 ): InlineKeyboard {
   const kb = new InlineKeyboard()
-    .text('✅ Post Now', `mod:post:${postId}`)
-    .text('🕒 Schedule', `mod:schedule:${postId}`)
+    .text('✅ Опубликовать', `mod:post:${postId}`)
+    .text('🕒 Запланировать', `mod:schedule:${postId}`)
     .row()
-    .text('📝 Edit Caption', `mod:edit:${postId}`);
+    .text('📝 Изменить текст', `mod:edit:${postId}`);
 
   if (aiEnabled) {
-    kb.text('♻️ Rewrite', `mod:rewrite:${postId}`);
+    kb.text('♻️ Рерайт', `mod:rewrite:${postId}`);
   }
 
-  kb.row().text('❌ Skip', `mod:skip:${postId}`).text('🗑 Delete', `mod:delete:${postId}`);
+  kb.row().text('❌ Пропустить', `mod:skip:${postId}`).text('🗑 Удалить', `mod:delete:${postId}`);
 
   if (totalPages > 1) {
     kb.row();
-    if (page > 0) kb.text('⬅️ Prev', `queue:page:${page - 1}`);
-    if (page < totalPages - 1) kb.text('➡️ Next', `queue:page:${page + 1}`);
+    if (page > 0) kb.text('⬅️ Назад', `queue:page:${page - 1}`);
+    if (page < totalPages - 1) kb.text('➡️ Вперёд', `queue:page:${page + 1}`);
   }
 
   return kb;
@@ -57,10 +57,10 @@ export function formatModerationCard(post: Post, timezone: string): string {
     `Статус: \`${post.status}\``,
     post.category ? `Категория: ${post.category}` : null,
     post.source_url ? `URL: ${post.source_url}` : null,
-    `Caption: ${truncateCaption(captionSource)}`,
-    post.ai_score != null ? `AI Score: ${post.ai_score}/10` : null,
-    post.risk_score != null ? `Risk Score: ${post.risk_score}/10` : null,
-    post.risk_reason ? `Risk reason: ${post.risk_reason}` : null,
+    `Текст: ${truncateCaption(captionSource)}`,
+    post.ai_score != null ? `Оценка AI: ${post.ai_score}/10` : null,
+    post.risk_score != null ? `Риск: ${post.risk_score}/10` : null,
+    post.risk_reason ? `Причина риска: ${post.risk_reason}` : null,
     post.last_error ? `Последняя ошибка: ${post.last_error}` : null,
     post.scheduled_at
       ? `Запланировано: ${formatDateTime(post.scheduled_at, timezone)}`

@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { logger } from '../logger.js';
+import { addRiskWarning } from '../services/content-filter.js';
 import { PREDEFINED_CATEGORIES, type PostCategory } from '../types.js';
 
 const AI_TIMEOUT_MS = 30_000;
@@ -212,6 +213,7 @@ export function evaluateNewPostInBackground(
 
   void (async () => {
     try {
+      const existing = posts.getById(postId);
       const [aiScore, risk, category] = await Promise.all([
         ai.scoreContent(text),
         ai.assessRisk(text),
@@ -226,14 +228,11 @@ export function evaluateNewPostInBackground(
       };
 
       if (risk.riskScore > 7) {
-        const warnings = [
-          {
-            type: 'risk_score' as const,
-            risk_score: risk.riskScore,
-            message: `Risk Score: ${risk.riskScore}/10 — ${risk.riskReason}`,
-          },
-        ];
-        updates.warnings = JSON.stringify(warnings);
+        updates.warnings = addRiskWarning(
+          existing?.warnings ?? null,
+          risk.riskScore,
+          risk.riskReason,
+        );
       }
 
       posts.update(postId, updates);
