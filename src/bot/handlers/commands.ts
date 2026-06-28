@@ -28,7 +28,7 @@ export function registerCommandHandlers(
 
   bot.command('start', async (ctx) => {
     const commands = getCommandList(aiEnabled);
-    await ctx.reply(`${WELCOME_MESSAGE}\n\n*Команды:*\n${commands}`, { parse_mode: 'Markdown' });
+    await ctx.reply(`${WELCOME_MESSAGE}\n\n<b>Команды:</b>\n${commands}`, { parse_mode: 'HTML' });
   });
 
   bot.command('help', async (ctx) => {
@@ -118,16 +118,16 @@ export function registerCommandHandlers(
   bot.command('stats', async (ctx) => {
     const stats = posts.getStats();
     const lines = [
-      '📊 *Статистика*',
+      '📊 <b>Статистика</b>',
       '',
-      '*По статусам:*',
+      '<b>По статусам:</b>',
       ...Object.entries(stats.byStatus).map(([s, c]) => `• ${s}: ${c}`),
       '',
       `Сегодня: ${stats.today}`,
       `За 7 дней: ${stats.last7Days}`,
       `Всего опубликовано: ${stats.allTime}`,
     ];
-    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+    await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
   });
 
   bot.command('testpost', async (ctx) => {

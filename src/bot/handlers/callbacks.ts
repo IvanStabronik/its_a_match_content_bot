@@ -92,12 +92,9 @@ export function registerCallbackHandlers(
 
         setSession(ctx.from.id, { type: 'rewrite_select', postId, variants });
 
-        const formatted = variants
-          .map((v, i) => `*Вариант ${i + 1}:*\n${v}`)
-          .join('\n\n');
+      const formatted = variants.map((v, i) => `Вариант ${i + 1}:\n${v}`).join('\n\n');
 
         await ctx.reply(`♻️ Варианты рерайта:\n\n${formatted}`, {
-          parse_mode: 'Markdown',
           reply_markup: rewriteVariantsKeyboard(postId, variants.length),
         });
       } catch (err) {
@@ -209,7 +206,7 @@ async function showNextInQueue(
 
   const post = items[0];
   await ctx.editMessageText(formatModerationCard(post, config.timezone), {
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: moderationKeyboard(post.id, safePage, totalPages, aiEnabled),
   });
 }

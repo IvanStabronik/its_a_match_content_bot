@@ -35,9 +35,9 @@ export async function showQueuePage(
   const kb = moderationKeyboard(post.id, safePage, totalPages, aiEnabled);
 
   if (ctx.callbackQuery) {
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: kb });
   } else {
-    await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: kb });
+    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
   }
 }
 

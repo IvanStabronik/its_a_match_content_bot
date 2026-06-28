@@ -1,6 +1,7 @@
 import { InlineKeyboard } from 'grammy';
 import type { Post } from '../types.js';
 import { truncateCaption } from '../services/content-filter.js';
+import { escapeHtml } from './messages.js';
 import { formatDateTime } from '../services/schedule-parser.js';
 
 export function moderationKeyboard(
@@ -52,16 +53,16 @@ export function formatModerationCard(post: Post, timezone: string): string {
     post.type === 'poll' ? post.poll_question : post.caption || post.raw_text;
 
   const lines = [
-    `📋 *Кандидат #${post.id}*`,
-    `Тип: \`${post.type}\``,
-    `Статус: \`${post.status}\``,
-    post.category ? `Категория: ${post.category}` : null,
-    post.source_url ? `URL: ${post.source_url}` : null,
-    `Текст: ${truncateCaption(captionSource)}`,
+    `📋 <b>Кандидат #${post.id}</b>`,
+    `Тип: <code>${escapeHtml(post.type)}</code>`,
+    `Статус: <code>${escapeHtml(post.status)}</code>`,
+    post.category ? `Категория: ${escapeHtml(post.category)}` : null,
+    post.source_url ? `URL: ${escapeHtml(post.source_url)}` : null,
+    `Текст: ${escapeHtml(truncateCaption(captionSource))}`,
     post.ai_score != null ? `Оценка AI: ${post.ai_score}/10` : null,
     post.risk_score != null ? `Риск: ${post.risk_score}/10` : null,
-    post.risk_reason ? `Причина риска: ${post.risk_reason}` : null,
-    post.last_error ? `Последняя ошибка: ${post.last_error}` : null,
+    post.risk_reason ? `Причина риска: ${escapeHtml(post.risk_reason)}` : null,
+    post.last_error ? `Последняя ошибка: ${escapeHtml(post.last_error)}` : null,
     post.scheduled_at
       ? `Запланировано: ${formatDateTime(post.scheduled_at, timezone)}`
       : null,

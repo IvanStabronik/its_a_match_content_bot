@@ -1,6 +1,6 @@
 export const ACCESS_DENIED = 'Доступ запрещён';
 
-export const WELCOME_MESSAGE = `👋 *Its a Match Content Bot*
+export const WELCOME_MESSAGE = `👋 <b>Its a Match Content Bot</b>
 
 Бот для модерации и публикации контента в канал @itsamatchchannel.
 
@@ -85,4 +85,11 @@ export function alreadyPublishedError(): string {
 
 export function publishInProgressError(): string {
   return 'Публикация уже выполняется';
+}
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

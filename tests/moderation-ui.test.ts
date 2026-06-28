@@ -57,6 +57,7 @@ describe('Moderation UI', () => {
     };
 
     const card = formatModerationCard(post, 'Europe/Warsaw');
+    expect(card).toContain('<b>Кандидат #1</b>');
     expect(card).toContain('Текст:');
     expect(card).toContain('Оценка AI:');
     expect(card).toContain('Риск:');
