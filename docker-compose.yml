@@ -1,0 +1,15 @@
+services:
+  content-bot:
+    build: .
+    container_name: itsamatch-content-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /app/data/content_bot.db
+      BACKUP_DIR: /app/data/backups
+    volumes:
+      - content-bot-data:/app/data
+
+volumes:
+  content-bot-data:
