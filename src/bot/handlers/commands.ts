@@ -8,11 +8,11 @@ import { PublisherService } from '../../services/publisher.js';
 import { buildPostLink, sendTestMessage } from '../../services/telegram.js';
 import {
   addUsageError,
-  getCommandList,
+  formatHelpMessage,
+  formatStartMessage,
   pollFormatError,
   queueWarningIfNeeded,
   textTooLongError,
-  WELCOME_MESSAGE,
 } from '../messages.js';
 import { parsePollCommand } from './poll.js';
 
@@ -27,12 +27,11 @@ export function registerCommandHandlers(
   const aiEnabled = ai !== null;
 
   bot.command('start', async (ctx) => {
-    const commands = getCommandList(aiEnabled);
-    await ctx.reply(`${WELCOME_MESSAGE}\n\n<b>Команды:</b>\n${commands}`, { parse_mode: 'HTML' });
+    await ctx.reply(formatStartMessage(aiEnabled), { parse_mode: 'HTML' });
   });
 
   bot.command('help', async (ctx) => {
-    await ctx.reply(getCommandList(aiEnabled));
+    await ctx.reply(formatHelpMessage(aiEnabled), { parse_mode: 'HTML' });
   });
 
   bot.command('add', async (ctx) => {
@@ -167,7 +166,7 @@ function registerAiCommands(
   bot.command('ai_rewrite', async (ctx) => {
     const text = ctx.message?.text?.replace(/^\/ai_rewrite\s*/, '').trim() ?? '';
     if (!text) {
-      await ctx.reply('Использование: /ai_rewrite <текст>');
+      await ctx.reply('Использование: /ai_rewrite [текст]');
       return;
     }
     try {
@@ -182,7 +181,7 @@ function registerAiCommands(
   bot.command('ai_score', async (ctx) => {
     const text = ctx.message?.text?.replace(/^\/ai_score\s*/, '').trim() ?? '';
     if (!text) {
-      await ctx.reply('Использование: /ai_score <текст>');
+      await ctx.reply('Использование: /ai_score [текст]');
       return;
     }
     try {
@@ -196,7 +195,7 @@ function registerAiCommands(
   bot.command('ai_classify', async (ctx) => {
     const text = ctx.message?.text?.replace(/^\/ai_classify\s*/, '').trim() ?? '';
     if (!text) {
-      await ctx.reply('Использование: /ai_classify <текст>');
+      await ctx.reply('Использование: /ai_classify [текст]');
       return;
     }
     try {

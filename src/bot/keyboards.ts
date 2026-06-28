@@ -46,7 +46,7 @@ export function formatModerationCard(post: Post, timezone: string): string {
     : [];
   const warningText =
     warnings.length > 0
-      ? '\n\n⚠️ Предупреждения:\n' + warnings.map((w) => `• ${w.message}`).join('\n')
+      ? '\n\n⚠️ Предупреждения:\n' + warnings.map((w) => `• ${escapeHtml(w.message)}`).join('\n')
       : '';
 
   const captionSource =

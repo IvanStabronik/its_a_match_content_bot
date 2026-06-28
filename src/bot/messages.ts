@@ -26,7 +26,7 @@ export function getCommandList(aiEnabled: boolean): string {
     '/start — приветствие и список команд',
     '/help — справка по командам',
     '/queue — очередь модерации',
-    '/add <текст> — добавить текстовый кандидат',
+    '/add [текст] — добавить текстовый кандидат',
     '/poll Question | Opt1 | Opt2 — создать опрос',
     '/scheduled — запланированные публикации',
     '/posted — последние опубликованные посты',
@@ -46,6 +46,14 @@ export function getCommandList(aiEnabled: boolean): string {
   }
 
   return base.join('\n');
+}
+
+export function formatStartMessage(aiEnabled: boolean): string {
+  return `${WELCOME_MESSAGE}\n\n<b>Команды:</b>\n${escapeHtml(getCommandList(aiEnabled))}`;
+}
+
+export function formatHelpMessage(aiEnabled: boolean): string {
+  return `<b>Справка по командам</b>\n\n${escapeHtml(getCommandList(aiEnabled))}`;
 }
 
 export function schedulePrompt(timezone: string): string {
