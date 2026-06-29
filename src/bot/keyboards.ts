@@ -2,6 +2,7 @@ import { InlineKeyboard } from 'grammy';
 import type { Post } from '../types.js';
 import { truncateCaption } from '../services/content-filter.js';
 import { discoveryFormatLabel, languageLabel } from '../discovery/format-labels.js';
+import { publishUrlLabel, resolvePublishUrl } from '../services/publish-content.js';
 import { escapeHtml } from './messages.js';
 import { formatDateTime } from '../services/schedule-parser.js';
 
@@ -84,7 +85,11 @@ export function formatModerationCard(
       ? `Рекомендация: ${escapeHtml(post.publish_recommendation)}`
       : null,
     post.quality_score != null ? `Качество: ${post.quality_score}/10` : null,
-    post.source_url ? `URL: ${escapeHtml(post.source_url)}` : null,
+    (() => {
+      const url = resolvePublishUrl(post);
+      const label = publishUrlLabel(post);
+      return url && label ? `${label}: ${escapeHtml(url)}` : null;
+    })(),
     `Текст: ${escapeHtml(truncateCaption(captionSource))}`,
     post.ai_score != null ? `Оценка AI: ${post.ai_score}/10` : null,
     post.risk_score != null ? `Риск: ${post.risk_score}/10` : null,

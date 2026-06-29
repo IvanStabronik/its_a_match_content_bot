@@ -1,5 +1,6 @@
 import type { Api, RawApi } from 'grammy';
 import { logger } from '../logger.js';
+import { buildLinkPublishText } from './publish-content.js';
 import type { Post } from '../types.js';
 
 const RETRYABLE_CODES = new Set([429, 500, 502, 503, 504]);
@@ -66,7 +67,7 @@ export async function sendByType(
       return msg.message_id;
     }
     case 'link': {
-      const text = post.source_url || post.caption || post.raw_text || '';
+      const text = buildLinkPublishText(post);
       const msg = await api.sendMessage(chatId, text, {
         link_preview_options: { is_disabled: false },
       });

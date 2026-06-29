@@ -3,6 +3,7 @@ import type { AppConfig } from '../config.js';
 import type { CreatePostInput, PostType, SkipReason, Warning } from '../types.js';
 import { logger } from '../logger.js';
 import { checkForbiddenContent, mergeWarnings } from '../services/content-filter.js';
+import { isDirectImageUrl } from '../services/publish-content.js';
 import type { PostRepository } from '../services/posts.js';
 import type { SourceItemInput, SourceItemRepository, SourceRepository } from '../services/sources.js';
 import type { Source } from '../types.js';
@@ -78,7 +79,7 @@ export async function buildCaptionForItem(
 }
 
 export function resolvePostType(item: DiscoveredItem): PostType {
-  if (item.discoveryFormat === 'meme_image' && item.imageUrl) {
+  if (item.discoveryFormat === 'meme_image' && item.imageUrl && isDirectImageUrl(item.imageUrl)) {
     return 'photo';
   }
   if (item.discoveryFormat === 'text_idea') return 'text';
@@ -188,10 +189,9 @@ export function buildPostFromItem(
   }
 
   const postType = resolvePostType(item);
-  const isPhotoFromUrl = postType === 'photo' && item.imageUrl && !item.imageUrl.includes('reddit');
 
   return {
-    type: isPhotoFromUrl ? 'link' : postType,
+    type: postType,
     status: 'pending',
     source_url: item.url,
     media_url: postType === 'photo' ? item.imageUrl : null,

@@ -106,6 +106,8 @@ describe('Moderation UI', () => {
         duration_seconds: 45,
         content_angle: 'Короткий видео-формат',
         quality_score: 8,
+        shorts_url: 'https://www.youtube.com/shorts/abc',
+        source_url: 'https://www.youtube.com/watch?v=abc',
       }),
       'Europe/Warsaw',
     );
@@ -113,6 +115,7 @@ describe('Moderation UI', () => {
     expect(card).toContain('Язык: ru');
     expect(card).toContain('45 сек');
     expect(card).toContain('Качество: 8/10');
+    expect(card).toContain('Shorts URL:');
     expect(discoveryFormatLabel('youtube_short_link')).toBe('Shorts-ссылка');
   });
 });
