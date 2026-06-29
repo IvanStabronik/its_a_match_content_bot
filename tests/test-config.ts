@@ -1,6 +1,6 @@
 import type { AppConfig } from '../src/config.js';
 
-/** Full AppConfig defaults for unit tests. */
+/** Minimal AppConfig defaults for unit tests. */
 export function makeTestConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     contentBotToken: 'token',
@@ -11,64 +11,6 @@ export function makeTestConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     databasePath: ':memory:',
     backupDir: '/tmp',
     timezone: 'Europe/Warsaw',
-    youtubeApiKey: null,
-    discoveryEnabled: true,
-    discoveryIntervalMinutes: 360,
-    discoveryMaxItemsPerSource: 5,
-    discoveryLookbackHours: 168,
-    discoveryMinScore: 0,
-    discoveryAutoCreateCandidates: true,
-    youtubeRegionCode: 'RU',
-    youtubeRelevanceLanguage: 'ru',
-    youtubeShortsMaxSeconds: 90,
-    youtubeRejectOverSeconds: 180,
-    discoveryAllowedLanguages: ['ru'],
-    discoveryRejectForeignLanguage: true,
-    discoveryMinQualityScore: 0,
-    discoveryCreateLowScore: true,
-    redditClientId: null,
-    redditClientSecret: null,
-    redditUserAgent: 'test',
-    redditMaxPostsPerSource: 5,
-    redditAllowedSubreddits: ['dating'],
-    dailyPackEnabled: true,
-    dailyPackTime: '10:00',
-    dailyPackTimezone: 'Europe/Warsaw',
-    dailyPackVideoTarget: 5,
-    dailyPackMemeTarget: 5,
-    dailyPackArticleTarget: 5,
-    dailyPackPollTarget: 5,
-    dailyPackIdeaTarget: 5,
-    dailyPackMaxTotal: 30,
-    dailyScheduleSlots: ['11:00', '13:30', '16:00', '18:30', '21:00'],
-    dailyAutoDiscoveryLookbackHours: 48,
-    dailyPackNotifyAdmins: true,
-    dailyPackGuaranteeMinimum: true,
-    dailyPackMinVideos: 5,
-    dailyPackMinMemes: 5,
-    dailyPackMinArticles: 5,
-    dailyPackMinPolls: 5,
-    dailyPackMinIdeas: 5,
-    dailyPackAllowAiBackfill: true,
-    dailyPackAllowForeignVideoIdeas: true,
-    dailyPackForeignVideoMode: 'adapt_to_text_idea',
-    dailyPackEmptySectionIsError: true,
-    discoveryForeignLanguageMode: 'adapt_or_demote',
-    memeBackfillMode: 'ai_text',
-    articleBackfillMode: 'ai_explainer',
-    starterSourcesAutoFix: false,
     ...overrides,
-  };
-}
-
-export function emptyDiscoverySummary() {
-  return {
-    checkedSources: 0,
-    newCandidates: 0,
-    duplicatesSkipped: 0,
-    foreignConverted: 0,
-    foreignRejected: 0,
-    errors: [] as string[],
-    perSource: [],
   };
 }

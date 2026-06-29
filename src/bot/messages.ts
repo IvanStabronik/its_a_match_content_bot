@@ -1,12 +1,12 @@
 export const ACCESS_DENIED = 'Доступ запрещён';
 
-export const WELCOME_MESSAGE = `👋 <b>Its a Match Content Bot</b>
+export const WELCOME_MESSAGE = `👋 <b>Manual Content Publisher Bot</b>
 
-Бот для модерации и публикации контента в канал @itsamatchchannel.
+Бот для ручной модерации и публикации контента в канал @itsamatchchannel.
 
-Отправьте текст, фото, видео, GIF или ссылку — бот сохранит кандидата в очередь.
+Отправьте текст, фото, видео, GIF, ссылку или перешлите пост — бот сохранит кандидата в очередь.
 
-Используйте /help для списка команд.`;
+Откройте /queue для редактирования и публикации.`;
 
 export const SUPPORTED_TYPES_MESSAGE =
   'Поддерживаемые типы контента: текст, фото, видео, GIF/анимация, ссылка (URL).\n' +
@@ -21,51 +21,34 @@ export function queueWarningIfNeeded(pendingCount: number): string {
   return pendingCount > 50 ? `\n\n${QUEUE_WARNING}` : '';
 }
 
+export const FINAL_COMMANDS = [
+  '/start — краткое меню',
+  '/help — помощь',
+  '/queue — очередь',
+  '/add &lt;текст&gt; — добавить текст',
+  '/poll Question | Opt1 | Opt2 — создать опрос',
+  '/scheduled — запланированные',
+  '/posted — последние опубликованные',
+  '/stats — статистика',
+  '/testpost — тестовая публикация',
+  '/backup — резервная копия',
+  '/skip_caption — оставить подпись пустой',
+] as const;
+
 export function getCommandList(aiEnabled: boolean): string {
-  const base = [
-    '/start — приветствие и список команд',
-    '/help — справка по командам',
-    '/today — контент-пакет на сегодня',
-    '/today_generate — собрать пакет сейчас',
-    '/today_rebuild — пересобрать пакет',
-    '/selected — выбранные посты на сегодня',
-    '/schedule_day — запланировать выбранное на день',
-    '/pack_diagnostics — почему в пакете столько контента',
-    '/setup_sources — базовые источники (один раз)',
-    '/source_add_url <url> — ручная ссылка (статья/мем/идея)',
-    '/queue — очередь модерации (техническая)',
-    '/add [текст] — добавить текстовый кандидат',
-    '/poll Question | Opt1 | Opt2 — создать опрос',
-    '/scheduled — запланированные публикации',
-    '/posted — последние опубликованные посты',
-    '/stats — статистика',
-    '/testpost — тестовая публикация в канал',
-    '/backup — резервная копия базы данных',
-    '/sources — список источников контента',
-    '/source_add — добавить источник (YouTube / RSS)',
-    '/discover — проверить все активные источники',
-    '/source_presets — рекомендуемые источники для RU контента',
-  ];
-
+  const lines: string[] = [...FINAL_COMMANDS];
   if (aiEnabled) {
-    base.push(
-      '/ai_rewrite — AI-рерайт текста',
-      '/ai_score — AI-оценка контента',
-      '/ai_classify — AI-классификация',
-      '/ai_poll — AI-генерация опроса',
-      '/ai_cta — AI-призыв к действию',
-    );
+    lines.push('/ai_edit &lt;post_id&gt; &lt;instruction&gt; — AI-редактура кандидата');
   }
-
-  return base.join('\n');
+  return lines.join('\n');
 }
 
 export function formatStartMessage(aiEnabled: boolean): string {
-  return `${WELCOME_MESSAGE}\n\n<b>Команды:</b>\n${escapeHtml(getCommandList(aiEnabled))}`;
+  return `${WELCOME_MESSAGE}\n\n<b>Команды:</b>\n${getCommandList(aiEnabled)}`;
 }
 
 export function formatHelpMessage(aiEnabled: boolean): string {
-  return `<b>Справка по командам</b>\n\n${escapeHtml(getCommandList(aiEnabled))}`;
+  return `<b>Справка по командам</b>\n\n${getCommandList(aiEnabled)}`;
 }
 
 export function schedulePrompt(timezone: string): string {
@@ -81,6 +64,10 @@ export function scheduleFormatError(): string {
 
 export function candidateCreated(id: number, pendingCount: number): string {
   return `✅ Сохранено. ID кандидата: ${id}${queueWarningIfNeeded(pendingCount)}`;
+}
+
+export function pendingCaptionPrompt(postId: number): string {
+  return `Добавьте подпись к кандидату #${postId} или отправьте /skip_caption.`;
 }
 
 export function addUsageError(): string {
@@ -113,3 +100,28 @@ export function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
+
+/** Commands that must not appear in /help after simplification. */
+export const REMOVED_COMMANDS = [
+  '/sources',
+  '/source_add',
+  '/source_add_url',
+  '/source_pause',
+  '/source_resume',
+  '/source_remove',
+  '/source_check',
+  '/source_presets',
+  '/discover',
+  '/today',
+  '/today_generate',
+  '/today_rebuild',
+  '/selected',
+  '/schedule_day',
+  '/pack_diagnostics',
+  '/setup_sources',
+  '/ai_rewrite',
+  '/ai_score',
+  '/ai_classify',
+  '/ai_poll',
+  '/ai_cta',
+] as const;

@@ -1,11 +1,10 @@
 import type { Bot, Context } from 'grammy';
 import type { AiModule } from '../../ai/module.js';
-import { evaluateNewPostInBackground } from '../../ai/module.js';
 import type { AppConfig } from '../../config.js';
 import { logger } from '../../logger.js';
 import {
   checkForbiddenContent,
-  isMessageOnlyUrl,
+  extractLinkFromText,
   isValidUrl,
   mergeWarnings,
 } from '../../services/content-filter.js';
@@ -16,12 +15,12 @@ import {
   toUtcIso,
   validateScheduleTime,
 } from '../../services/schedule-parser.js';
-import type { CreatePostInput, PostType } from '../../types.js';
+import type { CreatePostInput, PostType, Warning } from '../../types.js';
 import { InvalidTransitionError } from '../../types.js';
-import { assessLanguage, itemTextForLanguage } from '../../discovery/language.js';
 import {
   candidateCreated,
   invalidUrlError,
+  pendingCaptionPrompt,
   scheduleFormatError,
   schedulePrompt,
   SUPPORTED_TYPES_MESSAGE,
@@ -32,7 +31,7 @@ import { clearSession, getSession, setSession } from '../session.js';
 export function registerContentHandlers(
   bot: Bot,
   posts: PostRepository,
-  ai: AiModule | null,
+  _ai: AiModule | null,
   config: AppConfig,
 ): void {
   bot.on('message', async (ctx, next) => {
@@ -50,14 +49,14 @@ export function registerContentHandlers(
       return;
     }
 
-    if (session.type === 'media_note') {
-      await handleMediaNoteInput(ctx, posts, ai, session.postId);
+    if (session.type === 'waiting_for_caption') {
+      await handlePendingCaptionInput(ctx, posts, session.postId);
       return;
     }
 
     if (ctx.message.text?.startsWith('/')) return next();
 
-    await handleIncomingContent(ctx, posts, ai, config);
+    await handleIncomingContent(ctx, posts, config);
   });
 }
 
@@ -119,29 +118,30 @@ async function handleEditCaptionInput(
     return;
   }
 
-  posts.update(postId, { caption: text });
+  const post = posts.getById(postId);
+  if (!post) {
+    clearSession(ctx.from!.id);
+    await ctx.reply('Кандидат не найден.');
+    return;
+  }
+
+  const updates: { caption: string; raw_text?: string } = { caption: text };
+  if (post.type === 'text') {
+    updates.raw_text = text;
+  }
+
+  posts.update(postId, updates);
   clearSession(ctx.from!.id);
   await ctx.reply(`✅ Текст обновлён для кандидата #${postId}`);
 }
 
-async function handleMediaNoteInput(
+async function handlePendingCaptionInput(
   ctx: Context,
   posts: PostRepository,
-  ai: AiModule | null,
   postId: number,
 ): Promise<void> {
   const text = ctx.message?.text?.trim() ?? '';
   clearSession(ctx.from!.id);
-
-  if (text.toLowerCase() === 'пропустить' || text === '-') {
-    await ctx.reply(`✅ Описание пропущено для #${postId}`);
-    return;
-  }
-
-  if (text.length > 500) {
-    await ctx.reply('❌ Описание не длиннее 500 символов.');
-    return;
-  }
 
   const post = posts.getById(postId);
   if (!post) {
@@ -149,30 +149,23 @@ async function handleMediaNoteInput(
     return;
   }
 
-  let caption = post.caption ?? '';
-  if (ai && text) {
-    try {
-      const variants = await ai.rewriteCaption(`${text}\n\n${caption}`.trim());
-      caption = variants[0] ?? text;
-    } catch {
-      caption = text;
-    }
-  } else {
-    caption = text || caption;
+  if (text.length > 1024) {
+    await ctx.reply('❌ Подпись не длиннее 1024 символов.');
+    return;
   }
 
-  posts.update(postId, { caption, raw_text: caption });
-  await ctx.reply(`✅ Текст обновлён для #${postId}`);
+  posts.update(postId, { caption: text });
+  await ctx.reply(`✅ Подпись обновлена для #${postId}`);
 }
 
 async function handleIncomingContent(
   ctx: Context,
   posts: PostRepository,
-  ai: AiModule | null,
   config: AppConfig,
 ): Promise<void> {
   const msg = ctx.message!;
   const userId = String(ctx.from!.id);
+  const isForwarded = Boolean(msg.forward_origin);
 
   try {
     let input: CreatePostInput | null = null;
@@ -211,15 +204,16 @@ async function handleIncomingContent(
         return;
       }
 
-      if (isMessageOnlyUrl(text, msg.entities)) {
-        if (!isValidUrl(text)) {
+      const linkExtract = extractLinkFromText(text);
+      if (linkExtract) {
+        if (!isValidUrl(linkExtract.url)) {
           await ctx.reply(invalidUrlError());
           return;
         }
         input = {
           type: 'link',
-          source_url: text,
-          caption: text,
+          source_url: linkExtract.url,
+          caption: linkExtract.caption,
           created_by: userId,
         };
       } else if (!text.startsWith('/')) {
@@ -245,23 +239,17 @@ async function handleIncomingContent(
 
     if (!input) return;
 
-    if (input.type === 'video') {
-      input.discovery_format = 'native_video';
-      input.quality_score = 8;
-      input.content_angle = 'Нативное видео от админа';
-      input.publish_recommendation = 'Готово к модерации';
-    }
-    if (input.type === 'photo' || input.type === 'animation') {
-      input.discovery_format = input.type === 'photo' ? 'meme_image' : 'native_video';
-      input.quality_score = 7;
-    }
-
     const textForEval = input.caption || input.raw_text || input.source_url || '';
-    const lang = assessLanguage(itemTextForLanguage({ title: textForEval, description: null }));
-    input.language = lang.language;
-
     const forbiddenWarnings = checkForbiddenContent(textForEval);
-    const warnings = mergeWarnings(null, forbiddenWarnings);
+    let warnings = mergeWarnings(null, forbiddenWarnings);
+
+    if (isForwarded) {
+      const forwardWarning: Warning = {
+        type: 'forward',
+        message: 'Проверьте права/источник перед публикацией.',
+      };
+      warnings = mergeWarnings(warnings, [forwardWarning]);
+    }
 
     const post = posts.create(input);
 
@@ -269,26 +257,23 @@ async function handleIncomingContent(
       posts.update(post.id, { warnings });
     }
 
-    evaluateNewPostInBackground(ai, posts, post.id, textForEval);
-
     const pendingCount = posts.countPending();
     await ctx.reply(candidateCreated(post.id, pendingCount));
 
-    if (
+    const needsCaption =
       (input.type === 'video' || input.type === 'photo' || input.type === 'animation') &&
-      !input.caption
-    ) {
-      setSession(ctx.from!.id, { type: 'media_note', postId: post.id });
-      await ctx.reply(
-        'Добавьте короткое описание, что это за видео/мем, или отправьте «Пропустить».',
-      );
+      !input.caption;
+
+    if (needsCaption) {
+      setSession(ctx.from!.id, { type: 'waiting_for_caption', postId: post.id });
+      await ctx.reply(pendingCaptionPrompt(post.id));
     }
 
     logger.info('content', 'Candidate created', { postId: post.id, type: input.type });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error('content', 'Failed to save candidate', { error: msg });
-    await ctx.reply(`❌ Ошибка сохранения: ${msg}`);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error('content', 'Failed to save candidate', { error: errMsg });
+    await ctx.reply(`❌ Ошибка сохранения: ${errMsg}`);
   }
 }
 
@@ -297,6 +282,15 @@ function extractForwardedContent(
   userId: string,
 ): CreatePostInput | null {
   if (msg.text) {
+    const linkExtract = extractLinkFromText(msg.text);
+    if (linkExtract) {
+      return {
+        type: 'link',
+        source_url: linkExtract.url,
+        caption: linkExtract.caption,
+        created_by: userId,
+      };
+    }
     return { type: 'text', raw_text: msg.text, caption: msg.text, created_by: userId };
   }
   if (msg.caption) {

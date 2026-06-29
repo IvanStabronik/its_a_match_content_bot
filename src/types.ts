@@ -259,7 +259,7 @@ export interface PostStats {
 }
 
 export interface Warning {
-  type: 'category' | 'risk_score';
+  type: 'category' | 'risk_score' | 'forward' | 'info';
   message: string;
   category?: string;
   risk_score?: number;
@@ -283,8 +283,8 @@ export type SessionState =
   | { type: 'schedule'; postId: number }
   | { type: 'edit_caption'; postId: number }
   | { type: 'rewrite_select'; postId: number; variants: string[] }
-  | { type: 'media_note'; postId: number }
-  | { type: 'schedule_day_confirm'; packId: number; assignments: Array<{ postId: number; scheduledAt: string; slotLabel: string }> };
+  | { type: 'waiting_for_caption'; postId: number }
+  | { type: 'ai_preview'; postId: number; text: string; action: 'shorten' | 'livelier' | 'proofread' | 'custom' };
 
 export class InvalidTransitionError extends Error {
   constructor(from: PostStatus, to: PostStatus) {

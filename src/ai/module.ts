@@ -1,14 +1,18 @@
 import OpenAI from 'openai';
 import { logger } from '../logger.js';
-import { addRiskWarning } from '../services/content-filter.js';
-import { PREDEFINED_CATEGORIES, type PostCategory } from '../types.js';
 
 const AI_TIMEOUT_MS = 30_000;
+
+const EDITOR_SYSTEM_PROMPT =
+  'Ты редактор Telegram-канала Its A Match про отношения и дейтинг. ' +
+  'Стиль: лёгкий, умный, слегка мемный, не токсичный. ' +
+  'Без политики, религии, NSFW, унижения по полу. ' +
+  'Не выдумывай факты и не добавляй новые утверждения.';
 
 export class AiModule {
   private readonly client: OpenAI;
 
-  constructor(apiKey: string, private readonly mainBotUsername: string | null) {
+  constructor(apiKey: string, _mainBotUsername: string | null) {
     this.client = new OpenAI({ apiKey, timeout: AI_TIMEOUT_MS });
   }
 
@@ -43,7 +47,8 @@ export class AiModule {
             {
               role: 'system',
               content:
-                'Ты редактор Telegram-канала про отношения и дейтинг. Перепиши подпись в лёгком мем-ориентированном тоне на русском. Верни JSON: {"variants": ["...", "...", "..."]} — ровно 3 варианта, каждый не длиннее 1024 символов.',
+                `${EDITOR_SYSTEM_PROMPT} Перепиши подпись на русском. ` +
+                'Верни JSON: {"variants": ["...", "...", "..."]} — ровно 3 варианта, каждый не длиннее 1024 символов.',
             },
             { role: 'user', content: caption || 'Без подписи' },
           ],
@@ -60,7 +65,7 @@ export class AiModule {
     return variants;
   }
 
-  async scoreContent(text: string): Promise<number> {
+  async shortenCaption(caption: string): Promise<string> {
     const response = await this.call(
       () =>
         this.client.chat.completions.create({
@@ -69,22 +74,22 @@ export class AiModule {
             {
               role: 'system',
               content:
-                'Оцени качество контента для Telegram-канала про отношения (1-10). JSON: {"score": число}',
+                `${EDITOR_SYSTEM_PROMPT} Сократи текст до лаконичной Telegram-версии. ` +
+                'Сохрани смысл. JSON: {"caption":"..."}',
             },
-            { role: 'user', content: text },
+            { role: 'user', content: caption || 'Без текста' },
           ],
           response_format: { type: 'json_object' },
-          temperature: 0.3,
+          temperature: 0.5,
         }),
-      'score',
+      'shorten',
     );
 
-    const content = response.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(content) as { score?: number };
-    return Math.min(10, Math.max(1, Math.round(parsed.score ?? 5)));
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
+    return (parsed.caption ?? caption).slice(0, 1024);
   }
 
-  async assessRisk(text: string): Promise<{ riskScore: number; riskReason: string }> {
+  async makeLivelier(caption: string): Promise<string> {
     const response = await this.call(
       () =>
         this.client.chat.completions.create({
@@ -93,332 +98,46 @@ export class AiModule {
             {
               role: 'system',
               content:
-                'Оцени риск контента (1-10). JSON: {"risk_score": число, "risk_reason": "кратко на русском"}',
+                `${EDITOR_SYSTEM_PROMPT} Перепиши текст в более живой Telegram-стиле. ` +
+                'Не добавляй новых фактов. JSON: {"caption":"..."}',
             },
-            { role: 'user', content: text },
+            { role: 'user', content: caption || 'Без текста' },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.75,
+        }),
+      'livelier',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
+    return (parsed.caption ?? caption).slice(0, 1024);
+  }
+
+  async proofreadCaption(caption: string): Promise<string> {
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `${EDITOR_SYSTEM_PROMPT} Исправь грамматику, опечатки и пунктуацию. ` +
+                'Сохрани смысл и тон. JSON: {"caption":"..."}',
+            },
+            { role: 'user', content: caption || 'Без текста' },
           ],
           response_format: { type: 'json_object' },
           temperature: 0.2,
         }),
-      'risk',
-    );
-
-    const content = response.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(content) as { risk_score?: number; risk_reason?: string };
-    return {
-      riskScore: Math.min(10, Math.max(1, Math.round(parsed.risk_score ?? 1))),
-      riskReason: parsed.risk_reason ?? 'Без объяснения',
-    };
-  }
-
-  async classify(text: string): Promise<PostCategory> {
-    const categories = PREDEFINED_CATEGORIES.join(', ');
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `Классифицируй контент. Верни JSON: {"category": "slug"} — slug из списка: ${categories}`,
-            },
-            { role: 'user', content: text },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.2,
-        }),
-      'classify',
-    );
-
-    const content = response.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(content) as { category?: string };
-    const slug = parsed.category ?? 'dating_meme';
-    if ((PREDEFINED_CATEGORIES as readonly string[]).includes(slug)) {
-      return slug as PostCategory;
-    }
-    return 'dating_meme';
-  }
-
-  async generatePoll(text: string): Promise<{ question: string; options: string[] }> {
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                'Создай Telegram-опрос на русском. Вопрос до 255 символов, 2-10 вариантов. JSON: {"question": "...", "options": ["...", "..."]}',
-            },
-            { role: 'user', content: text },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.7,
-        }),
-      'poll',
-    );
-
-    const content = response.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(content) as { question?: string; options?: string[] };
-    const options = (parsed.options ?? []).slice(0, 10);
-    if (options.length < 2) throw new Error('AI вернул недостаточно вариантов для опроса');
-    return {
-      question: (parsed.question ?? 'Ваше мнение?').slice(0, 255),
-      options: options.map((o) => o.slice(0, 100)),
-    };
-  }
-
-  async generateCta(): Promise<string> {
-    const botHint = this.mainBotUsername
-      ? `Упомяни бота @${this.mainBotUsername}.`
-      : 'Призыв к действию для дейтинг-приложения.';
-
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `Сгенерируй CTA на русском (до 200 символов). ${botHint} JSON: {"cta": "..."}`,
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.8,
-        }),
-      'cta',
-    );
-
-    const content = response.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(content) as { cta?: string };
-    return (parsed.cta ?? '').slice(0, 200);
-  }
-
-  async generateDiscoveryCaption(
-    item: import('../discovery/types.js').DiscoveredItem,
-    channelUsername: string,
-  ): Promise<{
-    caption: string;
-    category: PostCategory;
-    aiScore: number;
-    riskScore: number;
-    riskReason: string;
-    warnings: import('../types.js').Warning[];
-  }> {
-    const metadata = [
-      item.title ? `Заголовок: ${item.title}` : null,
-      item.description ? `Описание: ${item.description}` : null,
-      item.author ? `Автор: ${item.author}` : null,
-      item.url ? `URL: ${item.url}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Ты редактор Telegram-канала @${channelUsername} про отношения, дейтинг и общение. ` +
-                'Сгенерируй подпись на русском (300–700 символов): лёгкий, слегка мемный, умный тон. ' +
-                'Без политики, религии, NSFW, унижения по полу. Не вставляй ссылку — пост и так будет ссылкой. ' +
-                'JSON: {"caption":"...","category":"slug","ai_score":число,"risk_score":число,"risk_reason":"..."} ' +
-                `category slug из: ${PREDEFINED_CATEGORIES.join(', ')}`,
-            },
-            { role: 'user', content: metadata || 'Без метаданных' },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.7,
-        }),
-      'discovery_caption',
-    );
-
-    const content = response.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(content) as {
-      caption?: string;
-      category?: string;
-      ai_score?: number;
-      risk_score?: number;
-      risk_reason?: string;
-    };
-
-    const caption = (parsed.caption ?? '').trim().slice(0, 700);
-    if (caption.length < 50) throw new Error('AI вернул слишком короткую подпись');
-
-    const categorySlug = parsed.category ?? 'link';
-    const category = (PREDEFINED_CATEGORIES as readonly string[]).includes(categorySlug)
-      ? (categorySlug as PostCategory)
-      : 'link';
-
-    return {
-      caption,
-      category,
-      aiScore: Math.min(10, Math.max(1, Math.round(parsed.ai_score ?? 6))),
-      riskScore: Math.min(10, Math.max(1, Math.round(parsed.risk_score ?? 2))),
-      riskReason: parsed.risk_reason ?? 'Без объяснения',
-      warnings: [],
-    };
-  }
-
-  async generateDiscoveryVariants(
-    item: import('../discovery/types.js').DiscoveredItem,
-    currentCaption: string,
-    channelUsername: string,
-  ): Promise<string[]> {
-    const metadata = [
-      item.title ? `Заголовок: ${item.title}` : null,
-      item.description ? `Описание: ${item.description}` : null,
-      item.author ? `Автор: ${item.author}` : null,
-      `Текущая подпись: ${currentCaption}`,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Ты редактор Telegram-канала @${channelUsername}. ` +
-                'Сгенерируй 3 альтернативные подписи на русском (300–700 символов каждая) для материала про отношения. ' +
-                'JSON: {"variants":["...","...","..."]}',
-            },
-            { role: 'user', content: metadata },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.85,
-        }),
-      'discovery_variants',
-    );
-
-    const content = response.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(content) as { variants?: string[] };
-    const variants = (parsed.variants ?? []).slice(0, 3).map((v) => v.slice(0, 700));
-    if (variants.length === 0) throw new Error('AI не вернул варианты');
-    return variants;
-  }
-
-  async generateArticleSummary(
-    item: import('../discovery/types.js').DiscoveredItem,
-    channelUsername: string,
-  ): Promise<{
-    caption: string;
-    category: PostCategory;
-    aiScore: number;
-    riskScore: number;
-    riskReason: string;
-    qualityScore: number;
-    warnings: import('../types.js').Warning[];
-  }> {
-    const metadata = [
-      item.title ? `Заголовок: ${item.title}` : null,
-      item.description ? `Текст: ${item.description}` : null,
-      item.url ? `Источник: ${item.url}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Ты редактор русскоязычного Telegram-канала @${channelUsername} про отношения. ` +
-                'Сделай русский пост-резюме статьи: hook, 2–4 предложения пользы, мягкий вопрос для обсуждения. ' +
-                'Не выдумывай факты. Ссылку в текст не вставляй. ' +
-                'JSON: {"caption":"...","category":"slug","ai_score":число,"quality_score":число,"risk_score":число,"risk_reason":"..."}',
-            },
-            { role: 'user', content: metadata },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.65,
-        }),
-      'article_summary',
-    );
-
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
-      caption?: string;
-      category?: string;
-      ai_score?: number;
-      quality_score?: number;
-      risk_score?: number;
-      risk_reason?: string;
-    };
-
-    const caption = (parsed.caption ?? '').trim().slice(0, 900);
-    const categorySlug = parsed.category ?? 'news';
-    const category = (PREDEFINED_CATEGORIES as readonly string[]).includes(categorySlug)
-      ? (categorySlug as PostCategory)
-      : 'news';
-
-    return {
-      caption: caption.length >= 40 ? caption : buildFallbackArticle(item.title),
-      category,
-      aiScore: Math.min(10, Math.max(1, Math.round(parsed.ai_score ?? 6))),
-      qualityScore: Math.min(10, Math.max(1, Math.round(parsed.quality_score ?? parsed.ai_score ?? 6))),
-      riskScore: Math.min(10, Math.max(1, Math.round(parsed.risk_score ?? 2))),
-      riskReason: parsed.risk_reason ?? 'Без объяснения',
-      warnings: [],
-    };
-  }
-
-  async adaptToRussian(
-    post: import('../types.js').Post,
-    channelUsername: string,
-  ): Promise<string> {
-    const context = [
-      post.source_title ? `Заголовок: ${post.source_title}` : null,
-      post.caption ? `Текущий текст: ${post.caption}` : null,
-      post.source_url ? `Источник: ${post.source_url}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Адаптируй контент для @${channelUsername} на русский Telegram-стиль: лёгко, умно, про отношения. ` +
-                'JSON: {"caption":"..."}',
-            },
-            { role: 'user', content: context || 'Без контекста' },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.75,
-        }),
-      'adapt_ru',
+      'proofread',
     );
 
     const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
-    return (parsed.caption ?? post.caption ?? '').slice(0, 1024);
+    return (parsed.caption ?? caption).slice(0, 1024);
   }
 
-  async convertToTextPost(
-    post: import('../types.js').Post,
-    channelUsername: string,
-  ): Promise<string> {
-    const context = [
-      post.discovery_format ? `Формат: ${post.discovery_format}` : null,
-      post.source_title ? `Заголовок: ${post.source_title}` : null,
-      post.caption ? `Текущий текст: ${post.caption}` : null,
-      post.source_url ? `Источник (только метаданные): ${post.source_url}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
+  async editWithInstruction(caption: string, instruction: string): Promise<string> {
     const response = await this.call(
       () =>
         this.client.chat.completions.create({
@@ -427,248 +146,23 @@ export class AiModule {
             {
               role: 'system',
               content:
-                `Сделай самостоятельный русский текст-пост для @${channelUsername} на основе идеи. ` +
-                'Не притворяйся, что видел видео/мем. Можно упомянуть, что материал навёл на мысль. ' +
-                'JSON: {"caption":"..."}',
+                `${EDITOR_SYSTEM_PROMPT} Отредактируй текст по инструкции админа. ` +
+                'Не публикуй и не добавляй внешний контент. JSON: {"caption":"..."}',
             },
-            { role: 'user', content: context },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.8,
-        }),
-      'text_post',
-    );
-
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
-    return (parsed.caption ?? post.caption ?? '').slice(0, 4096);
-  }
-
-  async generateDailyPollIdeas(
-    count: number,
-    channelUsername: string,
-  ): Promise<Array<{ question: string; options: string[] }>> {
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
             {
-              role: 'system',
-              content:
-                `Сгенерируй ${count} Telegram-опросов на русском для @${channelUsername}. ` +
-                'Темы: отношения, дейтинг, общение, одиночество, приложения. ' +
-                'Лёгкий тон, без токсичности, политики, NSFW. ' +
-                'JSON: {"polls":[{"question":"...","options":["...","..."]}]} — 2–4 варианта каждый.',
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.75,
-        }),
-      'daily_polls',
-    );
-
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
-      polls?: Array<{ question?: string; options?: string[] }>;
-    };
-    const polls = (parsed.polls ?? [])
-      .slice(0, count)
-      .map((p) => ({
-        question: (p.question ?? 'Ваше мнение?').slice(0, 255),
-        options: (p.options ?? ['Да', 'Нет']).slice(0, 4).map((o) => o.slice(0, 100)),
-      }))
-      .filter((p) => p.options.length >= 2);
-
-    if (polls.length === 0) throw new Error('AI не вернул опросы');
-    return polls;
-  }
-
-  async generateDailyTextIdeas(
-    count: number,
-    channelUsername: string,
-  ): Promise<Array<{ caption: string }>> {
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Сгенерируй ${count} русских текст-постов для @${channelUsername}. ` +
-                '300–700 символов, про отношения/общение, discussion-friendly, слегка наблюдательный тон. ' +
-                'Без выдуманных фактов и ссылок на несуществующие материалы. ' +
-                'JSON: {"ideas":[{"caption":"..."}]}',
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.8,
-        }),
-      'daily_text_ideas',
-    );
-
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
-      ideas?: Array<{ caption?: string }>;
-    };
-    const ideas = (parsed.ideas ?? [])
-      .slice(0, count)
-      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 700) }))
-      .filter((i) => i.caption.length >= 80);
-
-    if (ideas.length === 0) throw new Error('AI не вернул идеи');
-    return ideas;
-  }
-
-  async adaptForeignVideoToIdea(
-    item: import('../discovery/types.js').DiscoveredItem,
-    channelUsername: string,
-  ): Promise<string> {
-    const metadata = [
-      item.title ? `Заголовок: ${item.title}` : null,
-      item.description ? `Описание: ${item.description}` : null,
-      item.url ? `URL (не вставлять): ${item.url}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Ты редактор @${channelUsername}. Нашли короткое видео на английском. ` +
-                'Напиши русский текст-идею для Telegram (300–600 символов): ' +
-                '«Нашёл короткое видео на английском по теме X. Для канала лучше использовать как текстовую идею: ...». ' +
-                'Не притворяйся, что видел видео. Не вставляй ссылку. JSON: {"caption":"..."}',
-            },
-            { role: 'user', content: metadata },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.75,
-        }),
-      'foreign_video_idea',
-    );
-
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
-    const caption = (parsed.caption ?? '').trim().slice(0, 700);
-    if (caption.length < 80) throw new Error('AI вернул короткую адаптацию');
-    return caption;
-  }
-
-  async generateDailyVideoIdeas(
-    count: number,
-    channelUsername: string,
-  ): Promise<Array<{ caption: string; hook?: string }>> {
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Сгенерируй ${count} идей для коротких видео/постов @${channelUsername}. ` +
-                'Русский, 250–500 символов: hook + сценарий + подпись. Про отношения/дейтинг. ' +
-                'Это НЕ внешние видео — идеи для будущего контента. Без fake facts. ' +
-                'JSON: {"ideas":[{"caption":"...","hook":"..."}]}',
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.85,
-        }),
-      'daily_video_ideas',
-    );
-
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
-      ideas?: Array<{ caption?: string; hook?: string }>;
-    };
-    const ideas = (parsed.ideas ?? [])
-      .slice(0, count)
-      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 700), hook: i.hook }))
-      .filter((i) => i.caption.length >= 80);
-
-    if (ideas.length === 0) throw new Error('AI не вернул video ideas');
-    return ideas;
-  }
-
-  async generateDailyMemeIdeas(
-    count: number,
-    channelUsername: string,
-  ): Promise<Array<{ caption: string }>> {
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Сгенерируй ${count} мемных текст-идей для @${channelUsername}. ` +
-                'Русский, 120–350 символов, про дейтинг/отношения. Лёгкий observational/meme tone. ' +
-                'Не токсично, не сексистски, не NSFW, не политика, не унижение полов. ' +
-                'JSON: {"ideas":[{"caption":"..."}]}',
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.9,
-        }),
-      'daily_meme_ideas',
-    );
-
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
-      ideas?: Array<{ caption?: string }>;
-    };
-    const ideas = (parsed.ideas ?? [])
-      .slice(0, count)
-      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 400) }))
-      .filter((i) => i.caption.length >= 40);
-
-    if (ideas.length === 0) throw new Error('AI не вернул meme ideas');
-    return ideas;
-  }
-
-  async generateDailyExplainers(
-    count: number,
-    channelUsername: string,
-  ): Promise<Array<{ caption: string }>> {
-    const response = await this.call(
-      () =>
-        this.client.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content:
-                `Сгенерируй ${count} мини-разборов для @${channelUsername}. ` +
-                '500–900 символов, русский, темы: отношения, общение, одиночество, приложения. ' +
-                'Формат «Разбор» — без fake statistics, без fake source, без «исследования говорят». ' +
-                'JSON: {"explainers":[{"caption":"..."}]}',
+              role: 'user',
+              content: `Текст:\n${caption || 'Без текста'}\n\nИнструкция: ${instruction}`,
             },
           ],
           response_format: { type: 'json_object' },
           temperature: 0.7,
         }),
-      'daily_explainers',
+      'edit_with_instruction',
     );
 
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
-      explainers?: Array<{ caption?: string }>;
-    };
-    const explainers = (parsed.explainers ?? [])
-      .slice(0, count)
-      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 1000) }))
-      .filter((i) => i.caption.length >= 120);
-
-    if (explainers.length === 0) throw new Error('AI не вернул explainers');
-    return explainers;
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
+    return (parsed.caption ?? caption).slice(0, 1024);
   }
-}
-
-function buildFallbackArticle(title: string | null | undefined): string {
-  const t = title?.trim() || 'Интересная статья';
-  return `📰 ${t}\n\nКоротко: материал про отношения и общение.\n\nЧто думаете?`;
 }
 
 export function createAiModule(
@@ -677,46 +171,4 @@ export function createAiModule(
 ): AiModule | null {
   if (!apiKey) return null;
   return new AiModule(apiKey, mainBotUsername);
-}
-
-export function evaluateNewPostInBackground(
-  ai: AiModule | null,
-  posts: import('../services/posts.js').PostRepository,
-  postId: number,
-  text: string,
-): void {
-  if (!ai || !text.trim()) return;
-
-  void (async () => {
-    try {
-      const existing = posts.getById(postId);
-      const [aiScore, risk, category] = await Promise.all([
-        ai.scoreContent(text),
-        ai.assessRisk(text),
-        ai.classify(text),
-      ]);
-
-      const updates: Parameters<typeof posts.update>[1] = {
-        ai_score: aiScore,
-        risk_score: risk.riskScore,
-        risk_reason: risk.riskReason,
-        category,
-      };
-
-      if (risk.riskScore > 7) {
-        updates.warnings = addRiskWarning(
-          existing?.warnings ?? null,
-          risk.riskScore,
-          risk.riskReason,
-        );
-      }
-
-      posts.update(postId, updates);
-    } catch (err) {
-      logger.warn('ai', 'Background evaluation skipped', {
-        postId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  })();
 }

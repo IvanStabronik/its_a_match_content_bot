@@ -85,3 +85,49 @@ export function truncateCaption(text: string | null | undefined, max = 200): str
   if (text.length <= max) return text;
   return text.slice(0, max) + '…';
 }
+
+const URL_IN_TEXT_RE = /https?:\/\/[^\s]+/;
+
+/** Extract URL from text when message is URL-only or mostly URL. */
+export function extractLinkFromText(
+  text: string,
+): { url: string; caption: string | null } | null {
+  const trimmed = text.trim();
+  const match = trimmed.match(URL_IN_TEXT_RE);
+  if (!match) return null;
+
+  const url = match[0].replace(/[.,!?;:]+$/, '');
+  if (!isValidUrl(url)) return null;
+
+  if (isMessageOnlyUrl(trimmed)) {
+    return { url, caption: null };
+  }
+
+  const withoutUrl = trimmed.replace(match[0], '').replace(/\s+/g, ' ').trim();
+  const urlChars = url.length;
+  const totalNonSpace = trimmed.replace(/\s/g, '').length;
+  if (urlChars >= totalNonSpace * 0.6) {
+    return { url, caption: withoutUrl || null };
+  }
+
+  return null;
+}
+
+export function postTypeLabel(type: string): string {
+  switch (type) {
+    case 'text':
+      return 'текст';
+    case 'link':
+      return 'ссылка';
+    case 'photo':
+      return 'фото';
+    case 'video':
+      return 'видео';
+    case 'animation':
+      return 'GIF';
+    case 'poll':
+      return 'опрос';
+    default:
+      return type;
+  }
+}

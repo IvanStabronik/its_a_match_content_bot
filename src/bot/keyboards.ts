@@ -1,8 +1,7 @@
 import { InlineKeyboard } from 'grammy';
 import type { Post } from '../types.js';
-import { truncateCaption } from '../services/content-filter.js';
-import { discoveryFormatLabel, languageLabel } from '../discovery/format-labels.js';
-import { publishUrlLabel, resolvePublishUrl } from '../services/publish-content.js';
+import { postTypeLabel, truncateCaption } from '../services/content-filter.js';
+import { resolvePublishUrl } from '../services/publish-content.js';
 import { escapeHtml } from './messages.js';
 import { formatDateTime } from '../services/schedule-parser.js';
 
@@ -20,8 +19,10 @@ export function moderationKeyboard(
 
   if (aiEnabled) {
     kb.text('✨ AI-варианты', `mod:rewrite:${postId}`).row();
-    kb.text('🇷🇺 Адаптировать на русский', `mod:adapt_ru:${postId}`)
-      .text('🧠 Сделать текст-пост', `mod:text_post:${postId}`);
+    kb.text('✂️ Сократить', `mod:shorten:${postId}`)
+      .text('🎭 Сделать живее', `mod:livelier:${postId}`)
+      .row()
+      .text('🧹 Исправить ошибки', `mod:proofread:${postId}`);
   }
 
   kb.row().text('❌ Пропустить', `mod:skip:${postId}`).text('🗑 Удалить', `mod:delete:${postId}`);
@@ -44,11 +45,13 @@ export function rewriteVariantsKeyboard(postId: number, count: number): InlineKe
   return kb;
 }
 
-export function formatModerationCard(
-  post: Post,
-  timezone: string,
-  discovery?: { platformLabel?: string | null; sourceName?: string | null },
-): string {
+export function aiPreviewKeyboard(postId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('✅ Применить', `ai:apply:${postId}`)
+    .text('❌ Отмена', `ai:cancel:${postId}`);
+}
+
+export function formatModerationCard(post: Post, timezone: string): string {
   const warnings = post.warnings
     ? (JSON.parse(post.warnings) as Array<{ message: string }>)
     : [];
@@ -60,40 +63,15 @@ export function formatModerationCard(
   const captionSource =
     post.type === 'poll' ? post.poll_question : post.caption || post.raw_text;
 
+  const url = resolvePublishUrl(post);
+
   const lines = [
     `📋 <b>Кандидат #${post.id}</b>`,
-    post.discovery_format
-      ? `Формат: ${escapeHtml(discoveryFormatLabel(post.discovery_format))}`
-      : `Тип: <code>${escapeHtml(post.type)}</code>`,
-    post.language ? `Язык: ${escapeHtml(languageLabel(post.language))}` : null,
-    post.duration_seconds != null ? `Длина: ${post.duration_seconds} сек` : null,
+    `Тип: <code>${escapeHtml(postTypeLabel(post.type))}</code>`,
     `Статус: <code>${escapeHtml(post.status)}</code>`,
-    post.discovery_source_id && discovery?.platformLabel
-      ? `Источник: ${escapeHtml(discovery.platformLabel)}`
-      : null,
-    post.discovery_source_id && discovery?.sourceName
-      ? `Название источника: ${escapeHtml(discovery.sourceName)}`
-      : null,
-    post.source_title ? `Заголовок: ${escapeHtml(post.source_title)}` : null,
-    post.source_author ? `Автор/канал: ${escapeHtml(post.source_author)}` : null,
-    post.discovered_at
-      ? `Найдено: ${formatDateTime(post.discovered_at, timezone)}`
-      : null,
     post.category ? `Категория: ${escapeHtml(post.category)}` : null,
-    post.content_angle ? `Почему подходит: ${escapeHtml(post.content_angle)}` : null,
-    post.publish_recommendation
-      ? `Рекомендация: ${escapeHtml(post.publish_recommendation)}`
-      : null,
-    post.quality_score != null ? `Качество: ${post.quality_score}/10` : null,
-    (() => {
-      const url = resolvePublishUrl(post);
-      const label = publishUrlLabel(post);
-      return url && label ? `${label}: ${escapeHtml(url)}` : null;
-    })(),
+    url ? `URL: ${escapeHtml(url)}` : null,
     `Текст: ${escapeHtml(truncateCaption(captionSource))}`,
-    post.ai_score != null ? `Оценка AI: ${post.ai_score}/10` : null,
-    post.risk_score != null ? `Риск: ${post.risk_score}/10` : null,
-    post.risk_reason ? `Причина риска: ${escapeHtml(post.risk_reason)}` : null,
     post.last_error ? `Последняя ошибка: ${escapeHtml(post.last_error)}` : null,
     post.scheduled_at
       ? `Запланировано: ${formatDateTime(post.scheduled_at, timezone)}`

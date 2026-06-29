@@ -4,10 +4,9 @@ import type { AppConfig } from '../../config.js';
 import { logger } from '../../logger.js';
 import { PublishClaimError } from '../../types.js';
 import type { PostRepository } from '../../services/posts.js';
-import type { SourceItemRepository } from '../../services/sources.js';
-import type { SourceRepository } from '../../services/sources.js';
 import { PublisherService } from '../../services/publisher.js';
 import {
+  aiPreviewKeyboard,
   moderationKeyboard,
   rewriteVariantsKeyboard,
 } from '../keyboards.js';
@@ -26,15 +25,13 @@ export function registerCallbackHandlers(
   posts: PostRepository,
   publisher: PublisherService,
   ai: AiModule | null,
-  sources?: SourceRepository,
-  sourceItems?: SourceItemRepository,
 ): void {
   const aiEnabled = ai !== null;
 
   bot.callbackQuery(/^queue:page:(\d+)$/, async (ctx) => {
     const page = Number(ctx.match[1]);
     setQueuePage(ctx.from.id, page);
-    await showQueuePage(ctx, posts, config, page, aiEnabled, sources);
+    await showQueuePage(ctx, posts, config, page, aiEnabled);
     await ctx.answerCallbackQuery();
   });
 
@@ -92,34 +89,7 @@ export function registerCallbackHandlers(
 
       try {
         const caption = post.caption || post.raw_text || '';
-        let variants: string[];
-
-        if (post.discovery_item_id && sourceItems) {
-          const item = sourceItems.getById(post.discovery_item_id);
-          if (item) {
-            variants = await ai.generateDiscoveryVariants(
-              {
-                platform: item.platform,
-                externalId: item.external_id,
-                url: item.url,
-                title: item.title,
-                description: item.description,
-                author: item.author,
-                publishedAt: item.published_at,
-                thumbnailUrl: item.thumbnail_url,
-                raw: item.raw_json ? JSON.parse(item.raw_json) : null,
-                discoveryFormat: post.discovery_format ?? item.discovery_format ?? 'text_idea',
-                durationSeconds: post.duration_seconds ?? item.duration_seconds,
-              },
-              caption,
-              config.channelUsername,
-            );
-          } else {
-            variants = await ai.rewriteCaption(caption);
-          }
-        } else {
-          variants = await ai.rewriteCaption(caption);
-        }
+        const variants = await ai.rewriteCaption(caption);
 
         setSession(ctx.from.id, { type: 'rewrite_select', postId, variants });
 
@@ -135,45 +105,47 @@ export function registerCallbackHandlers(
       }
     });
 
-    bot.callbackQuery(/^mod:adapt_ru:(\d+)$/, async (ctx) => {
-      const postId = Number(ctx.match[1]);
-      const post = posts.getById(postId);
-      if (!post) {
-        await ctx.answerCallbackQuery({ text: 'Кандидат не найден' });
-        return;
-      }
-      await ctx.answerCallbackQuery({ text: 'Адаптация…' });
-      try {
-        const caption = await ai.adaptToRussian(post, config.channelUsername);
-        posts.update(postId, { caption, raw_text: caption, language: 'ru' });
-        await ctx.reply(`✅ Текст адаптирован на русский для #${postId}`);
-      } catch (err) {
-        await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-      }
-    });
+    for (const [action, pattern] of [
+      ['shorten', /^mod:shorten:(\d+)$/],
+      ['livelier', /^mod:livelier:(\d+)$/],
+      ['proofread', /^mod:proofread:(\d+)$/],
+    ] as const) {
+      bot.callbackQuery(pattern, async (ctx) => {
+        const postId = Number(ctx.match[1]);
+        const post = posts.getById(postId);
+        if (!post) {
+          await ctx.answerCallbackQuery({ text: 'Кандидат не найден' });
+          return;
+        }
 
-    bot.callbackQuery(/^mod:text_post:(\d+)$/, async (ctx) => {
-      const postId = Number(ctx.match[1]);
-      const post = posts.getById(postId);
-      if (!post) {
-        await ctx.answerCallbackQuery({ text: 'Кандидат не найден' });
-        return;
-      }
-      await ctx.answerCallbackQuery({ text: 'Конвертация…' });
-      try {
-        const caption = await ai.convertToTextPost(post, config.channelUsername);
-        posts.update(postId, {
-          type: 'text',
-          caption,
-          raw_text: caption,
-          discovery_format: 'text_idea',
-          language: 'ru',
-        });
-        await ctx.reply(`✅ Кандидат #${postId} преобразован в текст-пост`);
-      } catch (err) {
-        await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-      }
-    });
+        await ctx.answerCallbackQuery({ text: 'Обработка…' });
+
+        try {
+          const caption = post.caption || post.raw_text || '';
+          let result: string;
+          if (action === 'shorten') {
+            result = await ai.shortenCaption(caption);
+          } else if (action === 'livelier') {
+            result = await ai.makeLivelier(caption);
+          } else {
+            result = await ai.proofreadCaption(caption);
+          }
+
+          setSession(ctx.from.id, {
+            type: 'ai_preview',
+            postId,
+            text: result,
+            action,
+          });
+
+          await ctx.reply(`Результат:\n\n${result}`, {
+            reply_markup: aiPreviewKeyboard(postId),
+          });
+        } catch (err) {
+          await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
   }
 
   bot.callbackQuery(/^rewrite:pick:(\d+):(\d+)$/, async (ctx) => {
@@ -199,13 +171,49 @@ export function registerCallbackHandlers(
       return;
     }
 
-    posts.update(postId, { caption: variant });
+    const updates: { caption: string; raw_text?: string } = { caption: variant };
+    if (post.type === 'text') {
+      updates.raw_text = variant;
+    }
+
+    posts.update(postId, updates);
     clearSession(ctx.from.id);
     await ctx.answerCallbackQuery({ text: 'Текст обновлён' });
     await ctx.reply(`✅ Текст обновлён для #${postId}`);
   });
 
   bot.callbackQuery(/^rewrite:cancel:(\d+)$/, async (ctx) => {
+    clearSession(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: 'Отменено' });
+  });
+
+  bot.callbackQuery(/^ai:apply:(\d+)$/, async (ctx) => {
+    const postId = Number(ctx.match[1]);
+    const post = posts.getById(postId);
+    const session = getSession(ctx.from.id);
+
+    if (!post) {
+      await ctx.answerCallbackQuery({ text: 'Кандидат не найден' });
+      return;
+    }
+
+    if (session.type !== 'ai_preview' || session.postId !== postId) {
+      await ctx.answerCallbackQuery({ text: 'Сессия истекла' });
+      return;
+    }
+
+    const updates: { caption: string; raw_text?: string } = { caption: session.text };
+    if (post.type === 'text') {
+      updates.raw_text = session.text;
+    }
+
+    posts.update(postId, updates);
+    clearSession(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: 'Применено' });
+    await ctx.reply(`✅ Текст обновлён для #${postId}`);
+  });
+
+  bot.callbackQuery(/^ai:cancel:(\d+)$/, async (ctx) => {
     clearSession(ctx.from.id);
     await ctx.answerCallbackQuery({ text: 'Отменено' });
   });
@@ -230,7 +238,7 @@ export function registerCallbackHandlers(
     await ctx.answerCallbackQuery({ text: 'Пропущено' });
 
     const page = getQueuePage(ctx.from.id);
-    await showNextInQueue(ctx, posts, config, page, aiEnabled, sources);
+    await showNextInQueue(ctx, posts, config, page, aiEnabled);
   });
 
   bot.callbackQuery(/^mod:delete:(\d+)$/, async (ctx) => {
@@ -242,7 +250,7 @@ export function registerCallbackHandlers(
     await ctx.answerCallbackQuery({ text: 'Удалено' });
 
     const page = getQueuePage(ctx.from.id);
-    await showNextInQueue(ctx, posts, config, page, aiEnabled, sources);
+    await showNextInQueue(ctx, posts, config, page, aiEnabled);
   });
 }
 
@@ -252,7 +260,6 @@ async function showNextInQueue(
   config: AppConfig,
   page: number,
   aiEnabled: boolean,
-  sources?: SourceRepository,
 ): Promise<void> {
   const total = posts.countPending();
   if (total === 0) {
@@ -267,7 +274,7 @@ async function showNextInQueue(
   const items = posts.getPendingPage(safePage, QUEUE_PAGE_SIZE);
 
   if (items.length === 0 && safePage > 0) {
-    await showQueuePage(ctx, posts, config, safePage - 1, aiEnabled, sources);
+    await showQueuePage(ctx, posts, config, safePage - 1, aiEnabled);
     return;
   }
 
@@ -277,7 +284,7 @@ async function showNextInQueue(
   }
 
   const post = items[0];
-  await ctx.editMessageText(formatModerationCardForPost(post, config.timezone, sources), {
+  await ctx.editMessageText(formatModerationCardForPost(post, config.timezone), {
     parse_mode: 'HTML',
     reply_markup: moderationKeyboard(post.id, safePage, totalPages, aiEnabled),
   });

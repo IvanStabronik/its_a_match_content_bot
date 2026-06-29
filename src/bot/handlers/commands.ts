@@ -14,6 +14,8 @@ import {
   queueWarningIfNeeded,
   textTooLongError,
 } from '../messages.js';
+import { aiPreviewKeyboard } from '../keyboards.js';
+import { clearSession, getSession, setSession } from '../session.js';
 import { parsePollCommand } from './poll.js';
 
 export function registerCommandHandlers(
@@ -140,35 +142,6 @@ export function registerCommandHandlers(
     }
   });
 
-  bot.command('caption', async (ctx) => {
-    const raw = ctx.message?.text?.replace(/^\/caption\s*/, '').trim() ?? '';
-    const match = raw.match(/^(\d+)\s+([\s\S]+)/);
-    if (!match) {
-      await ctx.reply('Использование: /caption <id> <краткое описание>');
-      return;
-    }
-    const postId = Number(match[1]);
-    const note = match[2].trim();
-    const post = posts.getById(postId);
-    if (!post) {
-      await ctx.reply('Кандидат не найден.');
-      return;
-    }
-    let caption = note;
-    if (ai) {
-      try {
-        const variants = await ai.rewriteCaption(
-          `${note}\n\n${post.caption ?? post.raw_text ?? ''}`.trim(),
-        );
-        caption = variants[0] ?? note;
-      } catch {
-        // use note as-is
-      }
-    }
-    posts.update(postId, { caption, raw_text: caption });
-    await ctx.reply(`✅ Текст обновлён для #${postId}`);
-  });
-
   bot.command('backup', async (ctx) => {
     try {
       const result = createBackup(db, config.backupDir);
@@ -182,84 +155,48 @@ export function registerCommandHandlers(
     }
   });
 
+  bot.command('skip_caption', async (ctx) => {
+    const session = getSession(ctx.from!.id);
+    if (session.type !== 'waiting_for_caption') {
+      await ctx.reply('Нет ожидающей подписи. Отправьте фото/видео/GIF без подписи.');
+      return;
+    }
+    clearSession(ctx.from!.id);
+    await ctx.reply(`✅ Подпись для #${session.postId} оставлена пустой.`);
+  });
+
   if (ai) {
-    registerAiCommands(bot, ai, posts);
+    bot.command('ai_edit', async (ctx) => {
+      const raw = ctx.message?.text?.replace(/^\/ai_edit\s*/, '').trim() ?? '';
+      const match = raw.match(/^(\d+)\s+([\s\S]+)/);
+      if (!match) {
+        await ctx.reply('Использование: /ai_edit <post_id> <instruction>\nПример: /ai_edit 12 сделай короче и ироничнее');
+        return;
+      }
+
+      const postId = Number(match[1]);
+      const instruction = match[2].trim();
+      const post = posts.getById(postId);
+      if (!post) {
+        await ctx.reply('Кандидат не найден.');
+        return;
+      }
+
+      try {
+        const caption = post.caption || post.raw_text || '';
+        const result = await ai.editWithInstruction(caption, instruction);
+        setSession(ctx.from!.id, {
+          type: 'ai_preview',
+          postId,
+          text: result,
+          action: 'custom',
+        });
+        await ctx.reply(`Результат:\n\n${result}`, {
+          reply_markup: aiPreviewKeyboard(postId),
+        });
+      } catch (err) {
+        await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+      }
+    });
   }
-}
-
-function registerAiCommands(
-  bot: Bot,
-  ai: AiModule,
-  posts: PostRepository,
-): void {
-  bot.command('ai_rewrite', async (ctx) => {
-    const text = ctx.message?.text?.replace(/^\/ai_rewrite\s*/, '').trim() ?? '';
-    if (!text) {
-      await ctx.reply('Использование: /ai_rewrite [текст]');
-      return;
-    }
-    try {
-      const variants = await ai.rewriteCaption(text);
-      const formatted = variants.map((v, i) => `${i + 1}. ${v}`).join('\n\n');
-      await ctx.reply(`♻️ Варианты рерайта:\n\n${formatted}`);
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
-  });
-
-  bot.command('ai_score', async (ctx) => {
-    const text = ctx.message?.text?.replace(/^\/ai_score\s*/, '').trim() ?? '';
-    if (!text) {
-      await ctx.reply('Использование: /ai_score [текст]');
-      return;
-    }
-    try {
-      const score = await ai.scoreContent(text);
-      await ctx.reply(`📊 AI Score: ${score}/10`);
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
-  });
-
-  bot.command('ai_classify', async (ctx) => {
-    const text = ctx.message?.text?.replace(/^\/ai_classify\s*/, '').trim() ?? '';
-    if (!text) {
-      await ctx.reply('Использование: /ai_classify [текст]');
-      return;
-    }
-    try {
-      const category = await ai.classify(text);
-      await ctx.reply(`🏷 Категория: ${category}`);
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
-  });
-
-  bot.command('ai_poll', async (ctx) => {
-    const text = ctx.message?.text?.replace(/^\/ai_poll\s*/, '').trim() ?? 'Тема: отношения';
-    try {
-      const poll = await ai.generatePoll(text);
-      const post = posts.create({
-        type: 'poll',
-        poll_question: poll.question,
-        poll_options_json: JSON.stringify(poll.options),
-        caption: poll.question,
-        created_by: String(ctx.from!.id),
-      });
-      await ctx.reply(
-        `📊 Опрос создан (ID: ${post.id})\n\n❓ ${poll.question}\n${poll.options.map((o, i) => `${i + 1}. ${o}`).join('\n')}`,
-      );
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
-  });
-
-  bot.command('ai_cta', async (ctx) => {
-    try {
-      const cta = await ai.generateCta();
-      await ctx.reply(`📣 CTA:\n${cta}`);
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
-  });
 }
