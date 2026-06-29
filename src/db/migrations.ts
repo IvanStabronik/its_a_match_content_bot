@@ -174,6 +174,50 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 4,
+    name: 'daily_content_packs',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS content_packs (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          pack_date     TEXT NOT NULL UNIQUE,
+          status        TEXT NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft','ready','scheduled','archived')),
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          generated_at  TEXT,
+          notified_at   TEXT,
+          summary_json  TEXT,
+          last_error    TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_content_packs_date ON content_packs(pack_date);
+
+        CREATE TABLE IF NOT EXISTS content_pack_items (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          pack_id    INTEGER NOT NULL,
+          post_id    INTEGER NOT NULL,
+          section    TEXT NOT NULL
+                     CHECK (section IN ('videos','memes','articles','polls','ideas','other')),
+          selected   INTEGER NOT NULL DEFAULT 0,
+          position   INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          UNIQUE(pack_id, post_id),
+          FOREIGN KEY (pack_id) REFERENCES content_packs(id),
+          FOREIGN KEY (post_id) REFERENCES posts(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pack_items_pack ON content_pack_items(pack_id);
+        CREATE INDEX IF NOT EXISTS idx_pack_items_section ON content_pack_items(pack_id, section);
+      `);
+
+      if (tableExists(db, 'posts')) {
+        addColumnIfMissing(db, 'posts', 'pack_section', 'TEXT');
+        addColumnIfMissing(db, 'posts', 'selected_for_today', 'INTEGER DEFAULT 0');
+      }
+    },
+  },
 ];
 
 export function runMigrations(db: Db): void {

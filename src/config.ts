@@ -29,6 +29,18 @@ export interface AppConfig {
   redditUserAgent: string;
   redditMaxPostsPerSource: number;
   redditAllowedSubreddits: string[];
+  dailyPackEnabled: boolean;
+  dailyPackTime: string;
+  dailyPackTimezone: string;
+  dailyPackVideoTarget: number;
+  dailyPackMemeTarget: number;
+  dailyPackArticleTarget: number;
+  dailyPackPollTarget: number;
+  dailyPackIdeaTarget: number;
+  dailyPackMaxTotal: number;
+  dailyScheduleSlots: string[];
+  dailyAutoDiscoveryLookbackHours: number;
+  dailyPackNotifyAdmins: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -119,6 +131,18 @@ export function loadConfig(): AppConfig {
       process.env.REDDIT_ALLOWED_SUBREDDITS,
       ['dating', 'dating_advice', 'relationships', 'relationship_advice', 'Tinder', 'Bumble', 'OnlineDating', 'relationshipmemes'],
     ),
+    dailyPackEnabled: parseBool(process.env.DAILY_PACK_ENABLED, true),
+    dailyPackTime: process.env.DAILY_PACK_TIME?.trim() || '10:00',
+    dailyPackTimezone: process.env.DAILY_PACK_TIMEZONE?.trim() || 'Europe/Warsaw',
+    dailyPackVideoTarget: parsePositiveInt(process.env.DAILY_PACK_VIDEO_TARGET, 5),
+    dailyPackMemeTarget: parsePositiveInt(process.env.DAILY_PACK_MEME_TARGET, 5),
+    dailyPackArticleTarget: parsePositiveInt(process.env.DAILY_PACK_ARTICLE_TARGET, 5),
+    dailyPackPollTarget: parsePositiveInt(process.env.DAILY_PACK_POLL_TARGET, 5),
+    dailyPackIdeaTarget: parsePositiveInt(process.env.DAILY_PACK_IDEA_TARGET, 5),
+    dailyPackMaxTotal: parsePositiveInt(process.env.DAILY_PACK_MAX_TOTAL, 30),
+    dailyScheduleSlots: parseCsv(process.env.DAILY_SCHEDULE_SLOTS, ['11:00', '13:30', '16:00', '18:30', '21:00']),
+    dailyAutoDiscoveryLookbackHours: parsePositiveInt(process.env.DAILY_AUTO_DISCOVERY_LOOKBACK_HOURS, 48),
+    dailyPackNotifyAdmins: parseBool(process.env.DAILY_PACK_NOTIFY_ADMINS, true),
   };
 }
 

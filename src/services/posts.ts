@@ -46,7 +46,7 @@ export class PostRepository {
         discovery_source_id, discovery_item_id, source_title, source_author,
         thumbnail_url, discovered_at, ai_score, risk_score, risk_reason, warnings,
         discovery_format, language, duration_seconds, quality_score,
-        content_angle, publish_recommendation, shorts_url
+        content_angle, publish_recommendation, shorts_url, pack_section, selected_for_today
       ) VALUES (
         @type, @status, @category, @source_url, @media_file_id, @media_url,
         @caption, @raw_text, @created_by, @created_at, @updated_at,
@@ -54,7 +54,7 @@ export class PostRepository {
         @discovery_source_id, @discovery_item_id, @source_title, @source_author,
         @thumbnail_url, @discovered_at, @ai_score, @risk_score, @risk_reason, @warnings,
         @discovery_format, @language, @duration_seconds, @quality_score,
-        @content_angle, @publish_recommendation, @shorts_url
+        @content_angle, @publish_recommendation, @shorts_url, @pack_section, @selected_for_today
       )
     `);
     const result = stmt.run({
@@ -89,6 +89,8 @@ export class PostRepository {
       content_angle: input.content_angle ?? null,
       publish_recommendation: input.publish_recommendation ?? null,
       shorts_url: input.shorts_url ?? null,
+      pack_section: input.pack_section ?? null,
+      selected_for_today: input.selected_for_today ?? 0,
     });
     return this.getById(Number(result.lastInsertRowid))!;
   }
@@ -105,6 +107,7 @@ export class PostRepository {
       'deleted_at', 'poll_question', 'poll_options_json', 'media_file_id', 'source_url',
       'last_error', 'publishing_started_at', 'media_url', 'discovery_format', 'language',
       'duration_seconds', 'quality_score', 'content_angle', 'publish_recommendation', 'shorts_url',
+      'pack_section', 'selected_for_today',
     ] as const;
 
     const current = this.getById(id);
@@ -320,5 +323,26 @@ export class PostRepository {
     ).cnt;
 
     return { byStatus, today, last7Days, allTime: byStatus.posted };
+  }
+
+  findRecentPendingSince(sinceIso: string, excludePostIds: number[] = []): Post[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM posts WHERE status = 'pending'
+         AND datetime(created_at) >= datetime(@since)
+         ORDER BY COALESCE(quality_score, 0) DESC, created_at DESC`,
+      )
+      .all({ since: sinceIso }) as Record<string, unknown>[];
+    const excluded = new Set(excludePostIds);
+    return rows
+      .map((r) => rowToPost(r))
+      .filter((p) => !excluded.has(p.id));
+  }
+
+  listPendingInPack(packId: number): number[] {
+    const rows = this.db
+      .prepare('SELECT post_id FROM content_pack_items WHERE pack_id = ?')
+      .all(packId) as Array<{ post_id: number }>;
+    return rows.map((r) => r.post_id);
   }
 }

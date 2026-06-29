@@ -61,6 +61,8 @@ export interface Post {
   content_angle: string | null;
   publish_recommendation: string | null;
   shorts_url: string | null;
+  pack_section: PackSection | null;
+  selected_for_today: number;
 }
 
 export interface CreatePostInput {
@@ -93,6 +95,45 @@ export interface CreatePostInput {
   content_angle?: string | null;
   publish_recommendation?: string | null;
   shorts_url?: string | null;
+  pack_section?: PackSection | null;
+  selected_for_today?: number;
+}
+
+export type PackSection = 'videos' | 'memes' | 'articles' | 'polls' | 'ideas' | 'other';
+
+export type ContentPackStatus = 'draft' | 'ready' | 'scheduled' | 'archived';
+
+export interface ContentPack {
+  id: number;
+  pack_date: string;
+  status: ContentPackStatus;
+  created_at: string;
+  updated_at: string;
+  generated_at: string | null;
+  notified_at: string | null;
+  summary_json: string | null;
+  last_error: string | null;
+}
+
+export interface ContentPackItem {
+  id: number;
+  pack_id: number;
+  post_id: number;
+  section: PackSection;
+  selected: number;
+  position: number;
+  created_at: string;
+}
+
+export interface PackSummary {
+  videos: number;
+  memes: number;
+  articles: number;
+  polls: number;
+  ideas: number;
+  other: number;
+  selected: number;
+  total: number;
 }
 
 export type DiscoveryFormat =
@@ -199,7 +240,8 @@ export type SessionState =
   | { type: 'schedule'; postId: number }
   | { type: 'edit_caption'; postId: number }
   | { type: 'rewrite_select'; postId: number; variants: string[] }
-  | { type: 'media_note'; postId: number };
+  | { type: 'media_note'; postId: number }
+  | { type: 'schedule_day_confirm'; packId: number; assignments: Array<{ postId: number; scheduledAt: string; slotLabel: string }> };
 
 export class InvalidTransitionError extends Error {
   constructor(from: PostStatus, to: PostStatus) {

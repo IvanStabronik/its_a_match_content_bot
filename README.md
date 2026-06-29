@@ -2,7 +2,9 @@
 
 Telegram bot for moderating and publishing content to [@itsamatchchannel](https://t.me/itsamatchchannel).
 
-**v3** adds a Russian-first content quality layer: YouTube Shorts links, RSS article summaries, Reddit meme candidates, language filtering, and quality scoring. The bot **never auto-posts** — discovered items become `pending` candidates for manual approval via `/queue`.
+**v4** adds a **daily content pack** workflow: every morning the bot prepares a curated pack (videos, memes, articles, polls, text ideas) and notifies admins. Review via `/today`, select items, and schedule across the day. **Nothing is auto-published.**
+
+**v3** adds a Russian-first content quality layer: YouTube Shorts links, RSS article summaries, Reddit meme candidates, language filtering, and quality scoring.
 
 ## Stack
 
@@ -21,6 +23,17 @@ Telegram bot for moderating and publishing content to [@itsamatchchannel](https:
 | **Native Telegram video** | Yes (streaming) | Admin uploads video manually, or you use a direct MP4 URL / existing `file_id` |
 
 For autoplay-like behavior in the channel, upload the video to the bot directly or provide a legitimate direct MP4 source. YouTube, TikTok, Reels, and Instagram videos are **not** downloaded or re-uploaded.
+
+## Daily workflow (v4)
+
+1. Configure `.env` (see `DAILY_PACK_*` variables).
+2. Run `/setup_sources` once (YouTube Shorts starters; Reddit optional).
+3. Every morning (~`DAILY_PACK_TIME`) the bot sends: «Контент-пакет готов».
+4. Open `/today` — browse sections (🎬 Видео, 😂 Мемы, 📰 Статьи, 📊 Опросы, 💬 Идеи).
+5. Select posts, edit captions, use AI variants.
+6. `/schedule_day` or **🗓 Запланировать выбранное** — preview slots, confirm manually.
+
+The bot **never auto-publishes**. YouTube links do not autoplay in the channel — upload native video manually for autoplay-like behavior. Polls and text ideas can be AI-generated when real sources are insufficient.
 
 ## Quick start (English)
 

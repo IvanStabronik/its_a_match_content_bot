@@ -442,6 +442,81 @@ export class AiModule {
     const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
     return (parsed.caption ?? post.caption ?? '').slice(0, 4096);
   }
+
+  async generateDailyPollIdeas(
+    count: number,
+    channelUsername: string,
+  ): Promise<Array<{ question: string; options: string[] }>> {
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Сгенерируй ${count} Telegram-опросов на русском для @${channelUsername}. ` +
+                'Темы: отношения, дейтинг, общение, одиночество, приложения. ' +
+                'Лёгкий тон, без токсичности, политики, NSFW. ' +
+                'JSON: {"polls":[{"question":"...","options":["...","..."]}]} — 2–4 варианта каждый.',
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.75,
+        }),
+      'daily_polls',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
+      polls?: Array<{ question?: string; options?: string[] }>;
+    };
+    const polls = (parsed.polls ?? [])
+      .slice(0, count)
+      .map((p) => ({
+        question: (p.question ?? 'Ваше мнение?').slice(0, 255),
+        options: (p.options ?? ['Да', 'Нет']).slice(0, 4).map((o) => o.slice(0, 100)),
+      }))
+      .filter((p) => p.options.length >= 2);
+
+    if (polls.length === 0) throw new Error('AI не вернул опросы');
+    return polls;
+  }
+
+  async generateDailyTextIdeas(
+    count: number,
+    channelUsername: string,
+  ): Promise<Array<{ caption: string }>> {
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Сгенерируй ${count} русских текст-постов для @${channelUsername}. ` +
+                '300–700 символов, про отношения/общение, discussion-friendly, слегка наблюдательный тон. ' +
+                'Без выдуманных фактов и ссылок на несуществующие материалы. ' +
+                'JSON: {"ideas":[{"caption":"..."}]}',
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.8,
+        }),
+      'daily_text_ideas',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
+      ideas?: Array<{ caption?: string }>;
+    };
+    const ideas = (parsed.ideas ?? [])
+      .slice(0, count)
+      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 700) }))
+      .filter((i) => i.caption.length >= 80);
+
+    if (ideas.length === 0) throw new Error('AI не вернул идеи');
+    return ideas;
+  }
 }
 
 function buildFallbackArticle(title: string | null | undefined): string {
