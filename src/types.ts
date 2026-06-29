@@ -164,6 +164,15 @@ export interface PackDiagnostics {
     foreignRejected: number;
     errors: string[];
   };
+  sourcesStatus?: {
+    reddit: 'configured' | 'missing';
+    redditNote: string;
+    pikabuFeeds: number;
+    rssRuFeeds: number;
+    publicFeeds: number;
+    rssArticleFeeds: number;
+    manualLinksToday: number;
+  };
 }
 
 export type DiscoveryFormat =
@@ -192,6 +201,10 @@ export type SourceType =
   | 'youtube_short_search'
   | 'rss'
   | 'rss_article'
+  | 'rss_article_ru'
+  | 'public_feed'
+  | 'pikabu_rss'
+  | 'manual_source_link'
   | 'reddit'
   | 'reddit_subreddit';
 

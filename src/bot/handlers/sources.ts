@@ -1,14 +1,40 @@
 import type { Bot } from 'grammy';
+import type { AiModule } from '../../ai/module.js';
 import type { AppConfig } from '../../config.js';
 import type { DiscoveryService } from '../../discovery/service.js';
 import { getAdapter } from '../../discovery/adapters/index.js';
+import {
+  PIKABU_FEED_HINT,
+  validateFeedConfigAsync,
+} from '../../discovery/adapters/public-feed.js';
 import {
   sourceStatusLabel,
   sourceTypeLabel,
   type SourceRepository,
 } from '../../services/sources.js';
+import type { PostRepository } from '../../services/posts.js';
+import { createCandidateFromUrl } from '../../services/url-candidate.js';
 import { formatStarterSourcesResult, runStarterSourcesSetup } from '../../services/starter-sources.js';
 import { escapeHtml } from '../messages.js';
+
+async function addFeedSource(
+  sources: SourceRepository,
+  type: 'rss_article_ru' | 'public_feed' | 'pikabu_rss' | 'rss_article' | 'rss',
+  feedUrl: string,
+  name: string,
+  pikabu: boolean,
+): Promise<{ ok: true; id: number } | { ok: false; message: string }> {
+  const adapter = getAdapter(type);
+  const sourceConfig = { feedUrl };
+  const syncErr = adapter.validateConfig(sourceConfig);
+  if (syncErr) return { ok: false, message: syncErr };
+
+  const asyncErr = await validateFeedConfigAsync(sourceConfig, pikabu);
+  if (asyncErr) return { ok: false, message: asyncErr };
+
+  const source = sources.create({ type, name, config: sourceConfig });
+  return { ok: true, id: source.id };
+}
 
 function formatSourceLine(
   source: import('../../types.js').Source,
@@ -30,6 +56,8 @@ export function registerSourceHandlers(
   config: AppConfig,
   sources: SourceRepository,
   discovery: DiscoveryService,
+  posts: PostRepository,
+  ai: AiModule | null = null,
 ): void {
   bot.command('sources', async (ctx) => {
     const list = sources.listAll();
@@ -56,7 +84,11 @@ export function registerSourceHandlers(
           '/source_add youtube_short_search <запрос>\n' +
           '/source_add rss <feed_url> [имя]\n' +
           '/source_add rss_article <feed_url> [имя]\n' +
-          '/source_add reddit_subreddit <subreddit> [имя]',
+          '/source_add rss_article_ru <feed_url> [имя]\n' +
+          '/source_add public_feed <feed_url> [имя]\n' +
+          '/source_add pikabu_rss <feed_url> [имя]\n' +
+          '/source_add reddit_subreddit <subreddit> [имя]\n' +
+          '/source_add_url <url> — ручная ссылка (статья/мем/идея)',
       );
       return;
     }
@@ -153,15 +185,65 @@ export function registerSourceHandlers(
           return;
         }
         const name = parts.slice(2).join(' ') || `RSS статьи: ${feedUrl}`;
-        const adapter = getAdapter('rss_article');
-        const sourceConfig = { feedUrl };
-        const err = adapter.validateConfig(sourceConfig);
-        if (err) {
-          await ctx.reply(`❌ ${err}`);
+        const result = await addFeedSource(sources, 'rss_article', feedUrl, name, false);
+        if (!result.ok) {
+          await ctx.reply(`❌ ${result.message}`);
           return;
         }
-        const source = sources.create({ type: 'rss_article', name, config: sourceConfig });
-        await ctx.reply(`✅ RSS (статьи) добавлен. ID: ${source.id}`);
+        await ctx.reply(`✅ RSS (статьи) добавлен. ID: ${result.id}`);
+        return;
+      }
+
+      if (subType === 'rss_article_ru') {
+        const feedUrl = parts[1];
+        if (!feedUrl) {
+          await ctx.reply('Укажите URL русскоязычной RSS-ленты.');
+          return;
+        }
+        const name = parts.slice(2).join(' ') || `RSS RU: ${feedUrl}`;
+        const result = await addFeedSource(sources, 'rss_article_ru', feedUrl, name, false);
+        if (!result.ok) {
+          await ctx.reply(`❌ ${result.message}`);
+          return;
+        }
+        await ctx.reply(`✅ RSS RU (статьи) добавлен. ID: ${result.id}`);
+        return;
+      }
+
+      if (subType === 'public_feed') {
+        const feedUrl = parts[1];
+        if (!feedUrl) {
+          await ctx.reply('Укажите URL публичного RSS/Atom-фида.');
+          return;
+        }
+        const name = parts.slice(2).join(' ') || `Feed: ${feedUrl}`;
+        const result = await addFeedSource(sources, 'public_feed', feedUrl, name, false);
+        if (!result.ok) {
+          await ctx.reply(`❌ ${result.message}`);
+          return;
+        }
+        await ctx.reply(`✅ Public feed добавлен. ID: ${result.id}`);
+        return;
+      }
+
+      if (subType === 'pikabu_rss') {
+        const feedUrl = parts[1];
+        if (!feedUrl) {
+          await ctx.reply(`Укажите URL публичного RSS/Atom-фида Pikabu.\n\n${PIKABU_FEED_HINT}`);
+          return;
+        }
+        const name = parts.slice(2).join(' ') || 'Pikabu';
+        const result = await addFeedSource(sources, 'pikabu_rss', feedUrl, name, true);
+        if (!result.ok) {
+          await ctx.reply(`❌ ${result.message}`);
+          return;
+        }
+        await ctx.reply(`✅ Pikabu RSS добавлен. ID: ${result.id}`);
+        return;
+      }
+
+      if (subType === 'manual_source_link') {
+        await ctx.reply(`Для ручных ссылок используйте:\n/source_add_url <url>\n\n${PIKABU_FEED_HINT}`);
         return;
       }
 
@@ -196,7 +278,7 @@ export function registerSourceHandlers(
       }
 
       await ctx.reply(
-        'Неизвестный тип. Используйте: youtube_channel, youtube_search, youtube_short_search, rss, rss_article, reddit_subreddit',
+        'Неизвестный тип. Используйте: youtube_channel, youtube_search, youtube_short_search, rss, rss_article, rss_article_ru, public_feed, pikabu_rss, reddit_subreddit',
       );
     } catch (err) {
       await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
@@ -278,30 +360,63 @@ export function registerSourceHandlers(
     );
   });
 
+  bot.command('source_add_url', async (ctx) => {
+    const url = ctx.message?.text?.replace(/^\/source_add_url\s*/, '').trim() ?? '';
+    if (!url) {
+      await ctx.reply('Использование: /source_add_url <url>\n\nПример: /source_add_url https://pikabu.ru/story/...');
+      return;
+    }
+    try {
+      new URL(url);
+    } catch {
+      await ctx.reply('❌ Некорректный URL.');
+      return;
+    }
+
+    await ctx.reply('⏳ Загружаю метаданные и создаю кандидата…');
+    try {
+      const result = await createCandidateFromUrl(
+        posts,
+        url,
+        ai,
+        config.channelUsername,
+      );
+      await ctx.reply(
+        `✅ Кандидат #${result.postId} создан (${result.section}).\n` +
+          `Формат: ${result.format}\n` +
+          'Откройте /queue или /today',
+      );
+    } catch (err) {
+      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
   bot.command('source_presets', async (ctx) => {
     const lines = [
-      '📋 <b>Рекомендуемые источники (русский контент)</b>',
+      '📋 <b>Рекомендуемые источники (RU-first)</b>',
       '',
-      '<b>YouTube Shorts поиск:</b>',
-      '/source_add youtube_short_search ошибки в отношениях',
+      '<b>YouTube Shorts:</b>',
       '/source_add youtube_short_search красные флаги в отношениях',
-      '/source_add youtube_short_search дейтинг приложения',
+      '/source_add youtube_short_search ошибки в отношениях',
       '/source_add youtube_short_search первое свидание',
       '/source_add youtube_short_search переписка в отношениях',
       '/source_add youtube_short_search токсичные отношения',
-      '/source_add youtube_short_search тревожная привязанность',
       '',
-      '<b>RSS статьи (подставьте свой feed URL):</b>',
-      '/source_add rss_article https://example.com/rss.xml Название',
+      '<b>RSS / статьи:</b>',
+      '/source_add rss_article_ru &lt;RSS_URL&gt; &lt;Название&gt;',
       '',
-      '<b>Reddit (нужны REDDIT_CLIENT_ID/SECRET):</b>',
-      '/source_add reddit_subreddit dating',
-      '/source_add reddit_subreddit dating_advice',
-      '/source_add reddit_subreddit Tinder',
-      '/source_add reddit_subreddit Bumble',
+      '<b>Pikabu:</b>',
+      '/source_add pikabu_rss &lt;PUBLIC_RSS_OR_ATOM_URL&gt; Pikabu',
+      'или вручную:',
+      '/source_add_url &lt;URL поста Pikabu&gt;',
+      '',
+      '<b>Reddit (опционально):</b>',
       '/source_add reddit_subreddit relationshipmemes',
       '',
-      'После добавления: /discover → /queue',
+      '<b>Ручная ссылка:</b>',
+      '/source_add_url &lt;url&gt;',
+      '',
+      'После добавления: /discover → /queue или /today_rebuild',
     ];
     await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
   });

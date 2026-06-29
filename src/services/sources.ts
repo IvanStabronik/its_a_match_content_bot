@@ -219,6 +219,14 @@ export function sourceTypeLabel(type: SourceType): string {
       return 'RSS';
     case 'rss_article':
       return 'RSS статьи';
+    case 'rss_article_ru':
+      return 'RSS RU статьи';
+    case 'public_feed':
+      return 'Public RSS/Atom';
+    case 'pikabu_rss':
+      return 'Pikabu RSS';
+    case 'manual_source_link':
+      return 'Ручная ссылка';
     case 'reddit':
       return 'Reddit';
     case 'reddit_subreddit':

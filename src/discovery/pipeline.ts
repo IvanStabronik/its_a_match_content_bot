@@ -293,5 +293,6 @@ export function buildPostFromItem(
     content_angle: item.contentAngle ?? null,
     publish_recommendation: item.publishRecommendation ?? null,
     shorts_url: item.shortsUrl ?? null,
+    pack_section: item.packSectionHint ?? null,
   };
 }

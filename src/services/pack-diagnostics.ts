@@ -1,6 +1,8 @@
 import type { AppConfig } from '../config.js';
 import type { PackDiagnostics, PackSection, PackSectionDiagnostics, Post } from '../types.js';
-import { isBackfillPost, isForeignVideoIdeaPost } from './pack-sections.js';
+import { isBackfillPost, isForeignVideoIdeaPost, isManualSourcePost } from './pack-sections.js';
+import type { PostRepository } from './posts.js';
+import type { SourceRepository } from './sources.js';
 
 export function emptyDiagnostics(): PackDiagnostics {
   return {
@@ -37,8 +39,38 @@ export function classifyPostForSection(post: Post, section: PackSection): 'real'
   if (section === 'articles' && post.discovery_format === 'article_summary' && post.source_url) {
     return 'real';
   }
+  if (isManualSourcePost(post)) return 'real';
   if (post.created_by === 'discovery') return 'real';
   return 'backfill';
+}
+
+export function buildSourcesStatus(
+  sources: SourceRepository,
+  posts: PostRepository,
+  config: AppConfig,
+): NonNullable<PackDiagnostics['sourcesStatus']> {
+  const all = sources.listAll();
+  const pikabuFeeds = all.filter((s) => s.type === 'pikabu_rss' && s.enabled).length;
+  const rssRuFeeds = all.filter((s) => s.type === 'rss_article_ru' && s.enabled).length;
+  const publicFeeds = all.filter((s) => s.type === 'public_feed' && s.enabled).length;
+  const rssArticleFeeds = all.filter(
+    (s) => (s.type === 'rss_article' || s.type === 'rss') && s.enabled,
+  ).length;
+  const redditConfigured =
+    Boolean(config.redditClientId && config.redditClientSecret) &&
+    all.some((s) => s.type === 'reddit_subreddit' && s.enabled);
+
+  return {
+    reddit: redditConfigured ? 'configured' : 'missing',
+    redditNote: redditConfigured
+      ? 'Reddit опционален и настроен'
+      : 'Reddit опционален — не требуется для полного пакета',
+    pikabuFeeds,
+    rssRuFeeds,
+    publicFeeds,
+    rssArticleFeeds,
+    manualLinksToday: posts.countManualLinksToday(),
+  };
 }
 
 export function formatPackDiagnosticsText(
@@ -83,6 +115,23 @@ export function formatPackDiagnosticsText(
   }
   if (!config.youtubeApiKey) {
     lines.push('💡 YouTube API не настроен — видео из AI video ideas.');
+  }
+
+  const ss = diagnostics.sourcesStatus;
+  if (ss) {
+    lines.push('');
+    lines.push('<b>Источники:</b>');
+    lines.push(`  • Reddit: ${ss.reddit === 'configured' ? 'настроен (опционально)' : 'не настроен (опционально)'}`);
+    lines.push(`  • Pikabu RSS: ${ss.pikabuFeeds > 0 ? `${ss.pikabuFeeds} фид(ов)` : 'нет публичного фида'}`);
+    lines.push(`  • RSS RU: ${ss.rssRuFeeds} · Public feed: ${ss.publicFeeds} · RSS article: ${ss.rssArticleFeeds}`);
+    lines.push(`  • Ручные ссылки сегодня: ${ss.manualLinksToday}`);
+    lines.push(`  • ${ss.redditNote}`);
+  }
+
+  let aiBackfillTotal = 0;
+  for (const sec of diagnostics.sections) aiBackfillTotal += sec.backfill;
+  if (aiBackfillTotal > 0) {
+    lines.push(`\n🤖 AI backfill всего: ${aiBackfillTotal} позиций`);
   }
 
   for (const w of diagnostics.warnings) {

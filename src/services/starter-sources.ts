@@ -85,16 +85,28 @@ export function runStarterSourcesSetup(
 
   if (!config.redditClientId || !config.redditClientSecret) {
     result.notes.push(
-      'Reddit не настроен — мемы будут заполняться AI meme ideas до добавления REDDIT_CLIENT_ID/SECRET.',
+      'Reddit опционален — мемы заполняются AI meme ideas и другими источниками без Reddit.',
+    );
+  } else {
+    result.notes.push('Reddit опционален — можно добавить /source_add reddit_subreddit relationshipmemes');
+  }
+
+  result.notes.push(
+    'Pikabu: только публичный RSS/Atom (/source_add pikabu_rss <feed_url>) или /source_add_url <ссылка на пост>. HTML scraping не используется.',
+  );
+
+  const hasRssRu = existing.some(
+    (s) =>
+      s.enabled &&
+      (s.type === 'rss_article_ru' || s.type === 'rss_article' || s.type === 'public_feed'),
+  );
+  if (!hasRssRu) {
+    result.notes.push(
+      'RSS RU не настроен — разборы из AI explainer. Добавьте: /source_add rss_article_ru <feed_url> <имя>',
     );
   }
 
-  const hasRss = existing.some((s) => s.type === 'rss' || s.type === 'rss_article');
-  if (!hasRss) {
-    result.notes.push(
-      'RSS не настроен — разборы будут заполняться AI explainer постами до добавления rss_article.',
-    );
-  }
+  result.notes.push('Ручные ссылки: /source_add_url <url>');
 
   return result;
 }

@@ -345,4 +345,20 @@ export class PostRepository {
       .all(packId) as Array<{ post_id: number }>;
     return rows.map((r) => r.post_id);
   }
+
+  countManualLinksToday(timezone = 'Europe/Warsaw'): number {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    // Approximate: last 36h covers timezone edge cases for diagnostics
+    const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+    void timezone;
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) as cnt FROM posts
+         WHERE created_by = 'manual_source_link'
+         AND datetime(created_at) >= datetime(@since)`,
+      )
+      .get({ since }) as { cnt: number };
+    return row.cnt;
+  }
 }

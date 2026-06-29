@@ -54,7 +54,7 @@ export async function createBot(config: AppConfig): Promise<{
 
   bot.use(createAuthMiddleware(config));
   registerCommandHandlers(bot, config, posts, publisher, ai, db);
-  registerSourceHandlers(bot, config, sources, discovery);
+  registerSourceHandlers(bot, config, sources, discovery, posts, ai);
   registerDailyPackHandlers(bot, config, dailyPack, posts, ai, sources);
   registerQueueCommand(bot, posts, config, ai !== null, sources);
   registerContentHandlers(bot, posts, ai, config);

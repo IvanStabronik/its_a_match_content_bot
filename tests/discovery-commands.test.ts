@@ -23,13 +23,15 @@ describe('Source command registration', () => {
     } as unknown as Bot;
 
     const sources = {} as SourceRepository;
+    const posts = {} as PostRepository;
     const discovery = { discoverAll: vi.fn(), checkSource: vi.fn() } as unknown as DiscoveryService;
 
-    registerSourceHandlers(bot, makeConfig(), sources, discovery);
+    registerSourceHandlers(bot, makeConfig(), sources, discovery, posts);
 
     expect(registered).toContain('sources');
     expect(registered).toContain('discover');
     expect(registered).toContain('source_add');
+    expect(registered).toContain('source_add_url');
     expect(registered).toContain('source_check');
   });
 });

@@ -2,6 +2,8 @@
 
 Telegram bot for moderating and publishing content to [@itsamatchchannel](https://t.me/itsamatchchannel).
 
+**v6** adds **Russian-first web sources**: `rss_article_ru`, `public_feed`, `pikabu_rss` (public RSS/Atom only), and `/source_add_url` for manual links — no HTML scraping, no browser automation. Reddit remains optional.
+
 **v5** guarantees a **useful daily pack every morning** even when YouTube, Reddit, or RSS are missing or weak. External discovery improves quality; AI/template backfill fills every section. **Nothing is auto-published.**
 
 **v4** adds a **daily content pack** workflow: every morning the bot prepares a curated pack (videos, memes, articles, polls, text ideas) and notifies admins. Review via `/today`, select items, and schedule across the day.

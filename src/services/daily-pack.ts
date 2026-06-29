@@ -24,6 +24,7 @@ import { formatPackDate } from './daily-schedule.js';
 import type { ScheduleAssignment } from './daily-schedule.js';
 import { buildDailySchedulePreview } from './daily-schedule.js';
 import {
+  buildSourcesStatus,
   classifyPostForSection,
   emptyDiagnostics,
   initSectionDiagnostics,
@@ -199,6 +200,7 @@ export class DailyPackService {
       }
 
       diagnostics.sections = PACK_SECTIONS.map((s) => sectionDiag.get(s)!);
+      diagnostics.sourcesStatus = buildSourcesStatus(this.sources, this.posts, this.config);
 
       const summary = this.packs.buildDetailedSummary(pack.id, this.posts);
       this.validateMinimums(summary, diagnostics);

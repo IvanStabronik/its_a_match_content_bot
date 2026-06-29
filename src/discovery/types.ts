@@ -19,6 +19,7 @@ export interface DiscoveredItem {
   qualityScore?: number | null;
   contentAngle?: string | null;
   publishRecommendation?: string | null;
+  packSectionHint?: import('../types.js').PackSection | null;
 }
 
 export interface DiscoveryLimits {

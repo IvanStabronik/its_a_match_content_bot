@@ -32,6 +32,7 @@ export function getCommandList(aiEnabled: boolean): string {
     '/schedule_day — запланировать выбранное на день',
     '/pack_diagnostics — почему в пакете столько контента',
     '/setup_sources — базовые источники (один раз)',
+    '/source_add_url <url> — ручная ссылка (статья/мем/идея)',
     '/queue — очередь модерации (техническая)',
     '/add [текст] — добавить текстовый кандидат',
     '/poll Question | Opt1 | Opt2 — создать опрос',

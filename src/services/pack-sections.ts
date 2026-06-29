@@ -22,9 +22,18 @@ export function isForeignVideoIdeaPost(post: Post): boolean {
   );
 }
 
+export function isManualSourcePost(post: Post): boolean {
+  return post.created_by === 'manual_source_link';
+}
+
 export function sectionForPost(post: Post): PackSection {
   if (post.pack_section) return post.pack_section;
   if (post.type === 'poll') return 'polls';
+  if (isManualSourcePost(post)) {
+    if (post.discovery_format === 'meme_image') return 'memes';
+    if (post.discovery_format === 'article_summary') return 'articles';
+    return 'ideas';
+  }
   const fmt = post.discovery_format;
   if (fmt === 'youtube_short_link' || fmt === 'youtube_video_link') return 'videos';
   if (fmt === 'meme_image') return 'memes';
