@@ -153,29 +153,24 @@ const MIGRATIONS: Migration[] = [
       }
 
       if (tableExists(db, 'sources')) {
-        db.pragma('foreign_keys = OFF');
-        try {
-          db.exec(`
-            CREATE TABLE sources_v3 (
-              id              INTEGER PRIMARY KEY AUTOINCREMENT,
-              type            TEXT NOT NULL,
-              name            TEXT NOT NULL,
-              config_json     TEXT NOT NULL,
-              enabled         INTEGER NOT NULL DEFAULT 1,
-              last_checked_at TEXT,
-              last_success_at TEXT,
-              last_error      TEXT,
-              created_at      TEXT NOT NULL,
-              updated_at      TEXT NOT NULL
-            );
-            INSERT INTO sources_v3 SELECT * FROM sources;
-            DROP TABLE sources;
-            ALTER TABLE sources_v3 RENAME TO sources;
-            CREATE INDEX IF NOT EXISTS idx_sources_enabled ON sources(enabled);
-          `);
-        } finally {
-          db.pragma('foreign_keys = ON');
-        }
+        db.exec(`
+          CREATE TABLE sources_v3 (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            type            TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            config_json     TEXT NOT NULL,
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            last_checked_at TEXT,
+            last_success_at TEXT,
+            last_error      TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL
+          );
+          INSERT INTO sources_v3 SELECT * FROM sources;
+          DROP TABLE sources;
+          ALTER TABLE sources_v3 RENAME TO sources;
+          CREATE INDEX IF NOT EXISTS idx_sources_enabled ON sources(enabled);
+        `);
       }
     },
   },
@@ -198,12 +193,29 @@ export function runMigrations(db: Db): void {
   for (const migration of MIGRATIONS) {
     if (applied.has(migration.version)) continue;
     logger.info('database', `Applying migration v${migration.version}: ${migration.name}`);
-    const apply = db.transaction(() => {
-      migration.up(db);
+
+    const recordMigration = () => {
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
         migration.version,
         new Date().toISOString(),
       );
+    };
+
+    // v3 rebuilds sources while source_items FK references exist; pragma must run outside a transaction.
+    if (migration.version === 3) {
+      db.pragma('foreign_keys = OFF');
+      try {
+        migration.up(db);
+        recordMigration();
+      } finally {
+        db.pragma('foreign_keys = ON');
+      }
+      continue;
+    }
+
+    const apply = db.transaction(() => {
+      migration.up(db);
+      recordMigration();
     });
     apply();
   }
