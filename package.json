@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "reconnect": "node dist/cli/reconnect.js"
   },
   "engines": {
     "node": ">=20.0.0"
