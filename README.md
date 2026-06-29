@@ -115,3 +115,12 @@ npm run build
 npm test
 docker compose build --no-cache
 ```
+
+## Documentation
+
+| Document | Language | Audience |
+|----------|----------|----------|
+| [REQUIREMENTS.md](./REQUIREMENTS.md) | English | Product requirements (v2.0) |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | English | Technical architecture |
+| [TASKS.md](./TASKS.md) | English | Implementation status |
+| [docs/RUKOVODSTVO-POLZOVATELYA.pdf](./docs/RUKOVODSTVO-POLZOVATELYA.pdf) | **Russian** | Admin user guide (PDF) |
