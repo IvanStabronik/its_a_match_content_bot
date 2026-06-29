@@ -120,18 +120,49 @@ export async function evaluateDiscoveredItem(
 ): Promise<{
   accept: boolean;
   skipReason?: SkipReason;
+  adaptForeignToVideoIdea?: boolean;
+  allowWithWarning?: boolean;
   language: ReturnType<typeof assessLanguage>;
   quality: ReturnType<typeof scoreDiscoveredItem>;
 }> {
   const language = assessLanguage(itemTextForLanguage(item));
   item.language = language.language;
 
-  if (
-    config.discoveryRejectForeignLanguage &&
-    language.isForeignLikely &&
-    item.discoveryFormat !== 'article_summary'
-  ) {
-    return { accept: false, skipReason: 'foreign_language', language, quality: scoreDiscoveredItem(item, language, config) };
+  const isYoutube =
+    item.discoveryFormat === 'youtube_short_link' ||
+    item.discoveryFormat === 'youtube_video_link';
+
+  if (language.isForeignLikely && item.discoveryFormat !== 'article_summary') {
+    const mode = config.discoveryForeignLanguageMode;
+
+    if (
+      isYoutube &&
+      mode === 'adapt_or_demote' &&
+      config.dailyPackAllowForeignVideoIdeas &&
+      config.dailyPackForeignVideoMode === 'adapt_to_text_idea'
+    ) {
+      const quality = scoreDiscoveredItem(item, language, config);
+      item.qualityScore = quality.qualityScore;
+      item.contentAngle = 'Видео-идея (иностранный Shorts)';
+      item.publishRecommendation =
+        'Видео на иностранном языке — лучше сделать текст-пост или адаптировать.';
+      return { accept: true, adaptForeignToVideoIdea: true, language, quality };
+    }
+
+    if (mode === 'allow_with_warning') {
+      const quality = scoreDiscoveredItem(item, language, config);
+      item.qualityScore = quality.qualityScore;
+      return { accept: true, allowWithWarning: true, language, quality };
+    }
+
+    if (mode === 'reject' || config.discoveryRejectForeignLanguage) {
+      return {
+        accept: false,
+        skipReason: 'foreign_language',
+        language,
+        quality: scoreDiscoveredItem(item, language, config),
+      };
+    }
   }
 
   if (
@@ -157,13 +188,59 @@ export async function evaluateDiscoveredItem(
     return { accept: false, skipReason: 'low_quality', language, quality };
   }
 
-  const textForFilter = itemTextForLanguage(item);
-  const keywordWarnings = checkForbiddenContent(textForFilter);
-  if (keywordWarnings.length > 0 && keywordWarnings.some((w) => w.type === 'category')) {
-    // still create with warnings unless extremely unsafe - keep creating with warnings
-  }
-
   return { accept: true, language, quality };
+}
+
+export function buildForeignVideoIdeaCaption(title: string | null | undefined): string {
+  const t = title?.trim() || 'короткое видео';
+  return (
+    `Нашёл короткое видео на английском по теме «${t}».\n\n` +
+    `Для канала лучше использовать как текстовую идею: пересказать мысль из ролика своими словами на русском, без автоплея ссылки.\n\n` +
+    `Оригинал: ${t}`
+  );
+}
+
+export function buildForeignVideoIdeaPost(
+  source: Source,
+  item: DiscoveredItem,
+  sourceItemId: number,
+  caption: string,
+): CreatePostInput {
+  const now = new Date().toISOString();
+  const foreignWarning = JSON.stringify([
+    {
+      type: 'category' as const,
+      message: 'Источник на иностранном языке',
+      category: 'foreign_language',
+    },
+  ]);
+
+  return {
+    type: 'text',
+    status: 'pending',
+    source_url: item.shortsUrl ?? item.url,
+    caption,
+    raw_text: caption,
+    category: 'observation',
+    ai_score: 5,
+    quality_score: 5,
+    warnings: foreignWarning,
+    discovery_source_id: source.id,
+    discovery_item_id: sourceItemId,
+    source_title: 'Foreign video idea (EN)',
+    source_author: item.author,
+    thumbnail_url: item.thumbnailUrl ?? null,
+    discovered_at: now,
+    created_by: 'discovery',
+    discovery_format: 'text_idea',
+    language: 'en',
+    duration_seconds: item.durationSeconds ?? null,
+    content_angle: 'Видео-идея (иностранный Shorts)',
+    publish_recommendation:
+      'Видео на иностранном языке — лучше сделать текст-пост или адаптировать.',
+    shorts_url: item.shortsUrl ?? null,
+    pack_section: 'videos',
+  };
 }
 
 export function buildPostFromItem(

@@ -30,6 +30,7 @@ export function getCommandList(aiEnabled: boolean): string {
     '/today_rebuild — пересобрать пакет',
     '/selected — выбранные посты на сегодня',
     '/schedule_day — запланировать выбранное на день',
+    '/pack_diagnostics — почему в пакете столько контента',
     '/setup_sources — базовые источники (один раз)',
     '/queue — очередь модерации (техническая)',
     '/add [текст] — добавить текстовый кандидат',

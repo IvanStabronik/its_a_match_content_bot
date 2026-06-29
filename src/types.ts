@@ -112,6 +112,7 @@ export interface ContentPack {
   generated_at: string | null;
   notified_at: string | null;
   summary_json: string | null;
+  diagnostics_json: string | null;
   last_error: string | null;
 }
 
@@ -125,6 +126,12 @@ export interface ContentPackItem {
   created_at: string;
 }
 
+export interface SectionBreakdown {
+  total: number;
+  real: number;
+  backfill: number;
+}
+
 export interface PackSummary {
   videos: number;
   memes: number;
@@ -134,6 +141,29 @@ export interface PackSummary {
   other: number;
   selected: number;
   total: number;
+  breakdown?: Partial<Record<PackSection, SectionBreakdown>>;
+  warnings?: string[];
+}
+
+export interface PackSectionDiagnostics {
+  section: PackSection;
+  total: number;
+  real: number;
+  backfill: number;
+  lines: string[];
+}
+
+export interface PackDiagnostics {
+  sections: PackSectionDiagnostics[];
+  warnings: string[];
+  generatedAt: string;
+  discoverySummary: {
+    checkedSources: number;
+    newCandidates: number;
+    foreignConverted: number;
+    foreignRejected: number;
+    errors: string[];
+  };
 }
 
 export type DiscoveryFormat =

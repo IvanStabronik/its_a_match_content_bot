@@ -1,6 +1,5 @@
 import { InlineKeyboard } from 'grammy';
 import type { PackSection, PackSummary } from '../types.js';
-import { PACK_SECTION_LABELS } from '../services/pack-sections.js';
 import { formatPackDateDisplay } from '../services/daily-schedule.js';
 
 export function dailyPackMainKeyboard(): InlineKeyboard {
@@ -8,7 +7,7 @@ export function dailyPackMainKeyboard(): InlineKeyboard {
     .text('🎬 Видео', 'pack:section:videos:0')
     .text('😂 Мемы', 'pack:section:memes:0')
     .row()
-    .text('📰 Статьи', 'pack:section:articles:0')
+    .text('📰 Разборы', 'pack:section:articles:0')
     .text('📊 Опросы', 'pack:section:polls:0')
     .row()
     .text('💬 Идеи', 'pack:section:ideas:0')
@@ -16,19 +15,42 @@ export function dailyPackMainKeyboard(): InlineKeyboard {
     .row()
     .text('🗓 Запланировать выбранное', 'pack:schedule_preview')
     .row()
-    .text('🔄 Пересобрать пакет', 'pack:rebuild');
+    .text('🔄 Пересобрать пакет', 'pack:rebuild')
+    .text('🩺 Диагностика', 'pack:diagnostics');
+}
+
+function formatSectionLine(
+  emoji: string,
+  label: string,
+  section: PackSection,
+  count: number,
+  summary: PackSummary,
+): string {
+  const br = summary.breakdown?.[section];
+  if (br && (br.real > 0 || br.backfill > 0)) {
+    return `${emoji} ${label}: ${count} (${br.real} найдено, ${br.backfill} AI)`;
+  }
+  return `${emoji} ${label}: ${count}`;
 }
 
 export function formatDailyPackSummary(packDate: string, summary: PackSummary): string {
-  return (
-    `🗓 <b>Контент-пакет на ${formatPackDateDisplay(packDate)}</b>\n\n` +
-    `🎬 Видео: ${summary.videos}\n` +
-    `😂 Мемы: ${summary.memes}\n` +
-    `📰 Статьи: ${summary.articles}\n` +
-    `📊 Опросы: ${summary.polls}\n` +
-    `💬 Идеи: ${summary.ideas}\n\n` +
-    `Выбрано: ${summary.selected}`
-  );
+  const lines = [
+    `🗓 <b>Контент-пакет на ${formatPackDateDisplay(packDate)}</b>`,
+    '',
+    formatSectionLine('🎬', 'Видео', 'videos', summary.videos, summary),
+    formatSectionLine('😂', 'Мемы', 'memes', summary.memes, summary),
+    formatSectionLine('📰', 'Разборы', 'articles', summary.articles, summary),
+    formatSectionLine('📊', 'Опросы', 'polls', summary.polls, summary),
+    formatSectionLine('💬', 'Идеи', 'ideas', summary.ideas, summary),
+    '',
+    `Выбрано: ${summary.selected}`,
+  ];
+
+  if (summary.warnings && summary.warnings.length > 0) {
+    lines.push('', '⚠️ ' + summary.warnings.join('\n⚠️ '));
+  }
+
+  return lines.join('\n');
 }
 
 export function packItemKeyboard(
@@ -72,5 +94,13 @@ export function scheduleConfirmKeyboard(): InlineKeyboard {
 
 export function sectionTitle(section: PackSection | 'selected'): string {
   if (section === 'selected') return '✅ Выбранное';
-  return PACK_SECTION_LABELS[section];
+  const labels: Record<PackSection, string> = {
+    videos: '🎬 Видео',
+    memes: '😂 Мемы',
+    articles: '📰 Разборы',
+    polls: '📊 Опросы',
+    ideas: '💬 Идеи',
+    other: '📎 Прочее',
+  };
+  return labels[section];
 }

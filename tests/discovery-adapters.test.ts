@@ -4,37 +4,14 @@ import { getAdapter } from '../src/discovery/adapters/index.js';
 import { mapRssItem, parseRssDate } from '../src/discovery/adapters/rss.js';
 import { youtubeChannelAdapter } from '../src/discovery/adapters/youtube.js';
 
+import { makeTestConfig } from './test-config.js';
+
 function makeConfig(): AppConfig {
-  return {
-    contentBotToken: 't',
-    adminTelegramIds: [1],
-    channelUsername: 'ch',
-    openaiApiKey: null,
-    mainBotUsername: null,
-    databasePath: ':memory:',
-    backupDir: '/tmp',
-    timezone: 'Europe/Warsaw',
+  return makeTestConfig({
     youtubeApiKey: 'key',
-    discoveryEnabled: true,
-    discoveryIntervalMinutes: 360,
-    discoveryMaxItemsPerSource: 5,
-    discoveryLookbackHours: 168,
-    discoveryMinScore: 0,
-    discoveryAutoCreateCandidates: true,
-    youtubeRegionCode: 'RU',
-    youtubeRelevanceLanguage: 'ru',
-    youtubeShortsMaxSeconds: 90,
-    youtubeRejectOverSeconds: 180,
-    discoveryAllowedLanguages: ['ru'],
-    discoveryRejectForeignLanguage: true,
     discoveryMinQualityScore: 6,
     discoveryCreateLowScore: false,
-    redditClientId: null,
-    redditClientSecret: null,
-    redditUserAgent: 'test',
-    redditMaxPostsPerSource: 5,
-    redditAllowedSubreddits: ['dating'],
-  };
+  });
 }
 
 describe('Source adapter validation', () => {

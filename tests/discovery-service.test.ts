@@ -12,38 +12,11 @@ import { PostRepository } from '../src/services/posts.js';
 import { SourceItemRepository, SourceRepository } from '../src/services/sources.js';
 import * as youtubeAdapter from '../src/discovery/adapters/youtube.js';
 
+import type { AppConfig } from '../src/config.js';
+import { makeTestConfig } from './test-config.js';
+
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
-  return {
-    contentBotToken: 'token',
-    adminTelegramIds: [1],
-    channelUsername: 'testchannel',
-    openaiApiKey: null,
-    mainBotUsername: null,
-    databasePath: ':memory:',
-    backupDir: '/tmp',
-    timezone: 'Europe/Warsaw',
-    youtubeApiKey: null,
-    discoveryEnabled: true,
-    discoveryIntervalMinutes: 360,
-    discoveryMaxItemsPerSource: 5,
-    discoveryLookbackHours: 168,
-    discoveryMinScore: 0,
-    discoveryAutoCreateCandidates: true,
-    youtubeRegionCode: 'RU',
-    youtubeRelevanceLanguage: 'ru',
-    youtubeShortsMaxSeconds: 90,
-    youtubeRejectOverSeconds: 180,
-    discoveryAllowedLanguages: ['ru'],
-    discoveryRejectForeignLanguage: true,
-    discoveryMinQualityScore: 0,
-    discoveryCreateLowScore: true,
-    redditClientId: null,
-    redditClientSecret: null,
-    redditUserAgent: 'test',
-    redditMaxPostsPerSource: 5,
-    redditAllowedSubreddits: ['dating'],
-    ...overrides,
-  };
+  return makeTestConfig(overrides);
 }
 
 const sampleItem: DiscoveredItem = {

@@ -47,7 +47,7 @@ export async function createBot(config: AppConfig): Promise<{
   const discovery = new DiscoveryService(sources, sourceItems, posts, config, ai);
   const discoveryScheduler = new DiscoveryScheduler(discovery, config);
   const contentPacks = new ContentPackRepository(db);
-  const dailyPack = new DailyPackService(contentPacks, posts, discovery, config, ai);
+  const dailyPack = new DailyPackService(contentPacks, posts, discovery, sources, config, ai);
   const dailyPackScheduler = new DailyPackScheduler(dailyPack, config);
 
   const bot = new Bot(config.contentBotToken);

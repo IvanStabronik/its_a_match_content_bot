@@ -41,6 +41,20 @@ export interface AppConfig {
   dailyScheduleSlots: string[];
   dailyAutoDiscoveryLookbackHours: number;
   dailyPackNotifyAdmins: boolean;
+  dailyPackGuaranteeMinimum: boolean;
+  dailyPackMinVideos: number;
+  dailyPackMinMemes: number;
+  dailyPackMinArticles: number;
+  dailyPackMinPolls: number;
+  dailyPackMinIdeas: number;
+  dailyPackAllowAiBackfill: boolean;
+  dailyPackAllowForeignVideoIdeas: boolean;
+  dailyPackForeignVideoMode: 'adapt_to_text_idea' | 'reject';
+  dailyPackEmptySectionIsError: boolean;
+  discoveryForeignLanguageMode: 'reject' | 'adapt_or_demote' | 'allow_with_warning';
+  memeBackfillMode: 'ai_text' | 'generated_card' | 'off';
+  articleBackfillMode: 'ai_explainer' | 'off';
+  starterSourcesAutoFix: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -94,6 +108,12 @@ function parseNonNegativeInt(raw: string | undefined, defaultValue: number): num
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : defaultValue;
 }
 
+function parseEnum<T extends string>(raw: string | undefined, allowed: readonly T[], defaultValue: T): T {
+  const v = raw?.trim().toLowerCase();
+  if (v && (allowed as readonly string[]).includes(v)) return v as T;
+  return defaultValue;
+}
+
 export function loadConfig(): AppConfig {
   const contentBotToken = requireEnv('CONTENT_BOT_TOKEN');
   const adminTelegramIds = parseAdminIds(requireEnv('ADMIN_TELEGRAM_IDS'));
@@ -143,7 +163,69 @@ export function loadConfig(): AppConfig {
     dailyScheduleSlots: parseCsv(process.env.DAILY_SCHEDULE_SLOTS, ['11:00', '13:30', '16:00', '18:30', '21:00']),
     dailyAutoDiscoveryLookbackHours: parsePositiveInt(process.env.DAILY_AUTO_DISCOVERY_LOOKBACK_HOURS, 48),
     dailyPackNotifyAdmins: parseBool(process.env.DAILY_PACK_NOTIFY_ADMINS, true),
+    dailyPackGuaranteeMinimum: parseBool(process.env.DAILY_PACK_GUARANTEE_MINIMUM, true),
+    dailyPackMinVideos: parsePositiveInt(process.env.DAILY_PACK_MIN_VIDEOS, 5),
+    dailyPackMinMemes: parsePositiveInt(process.env.DAILY_PACK_MIN_MEMES, 5),
+    dailyPackMinArticles: parsePositiveInt(process.env.DAILY_PACK_MIN_ARTICLES, 5),
+    dailyPackMinPolls: parsePositiveInt(process.env.DAILY_PACK_MIN_POLLS, 5),
+    dailyPackMinIdeas: parsePositiveInt(process.env.DAILY_PACK_MIN_IDEAS, 5),
+    dailyPackAllowAiBackfill: parseBool(process.env.DAILY_PACK_ALLOW_AI_BACKFILL, true),
+    dailyPackAllowForeignVideoIdeas: parseBool(process.env.DAILY_PACK_ALLOW_FOREIGN_VIDEO_IDEAS, true),
+    dailyPackForeignVideoMode: parseEnum(
+      process.env.DAILY_PACK_FOREIGN_VIDEO_MODE,
+      ['adapt_to_text_idea', 'reject'] as const,
+      'adapt_to_text_idea',
+    ),
+    dailyPackEmptySectionIsError: parseBool(process.env.DAILY_PACK_EMPTY_SECTION_IS_ERROR, true),
+    discoveryForeignLanguageMode: parseEnum(
+      process.env.DISCOVERY_FOREIGN_LANGUAGE_MODE,
+      ['reject', 'adapt_or_demote', 'allow_with_warning'] as const,
+      'adapt_or_demote',
+    ),
+    memeBackfillMode: parseEnum(
+      process.env.MEME_BACKFILL_MODE,
+      ['ai_text', 'generated_card', 'off'] as const,
+      'ai_text',
+    ),
+    articleBackfillMode: parseEnum(
+      process.env.ARTICLE_BACKFILL_MODE,
+      ['ai_explainer', 'off'] as const,
+      'ai_explainer',
+    ),
+    starterSourcesAutoFix: parseBool(process.env.STARTER_SOURCES_AUTO_FIX, true),
   };
+}
+
+export function getDailyPackSectionTarget(
+  config: AppConfig,
+  section: 'videos' | 'memes' | 'articles' | 'polls' | 'ideas',
+): number {
+  if (config.dailyPackGuaranteeMinimum) {
+    switch (section) {
+      case 'videos':
+        return config.dailyPackMinVideos;
+      case 'memes':
+        return config.dailyPackMinMemes;
+      case 'articles':
+        return config.dailyPackMinArticles;
+      case 'polls':
+        return config.dailyPackMinPolls;
+      case 'ideas':
+        return config.dailyPackMinIdeas;
+    }
+  }
+  switch (section) {
+    case 'videos':
+      return config.dailyPackVideoTarget;
+    case 'memes':
+      return config.dailyPackMemeTarget;
+    case 'articles':
+      return config.dailyPackArticleTarget;
+    case 'polls':
+      return config.dailyPackPollTarget;
+    case 'ideas':
+      return config.dailyPackIdeaTarget;
+  }
 }
 
 function parseCsv(raw: string | undefined, defaultValue: string[]): string[] {

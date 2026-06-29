@@ -7,6 +7,7 @@ import {
   sourceTypeLabel,
   type SourceRepository,
 } from '../../services/sources.js';
+import { formatStarterSourcesResult, runStarterSourcesSetup } from '../../services/starter-sources.js';
 import { escapeHtml } from '../messages.js';
 
 function formatSourceLine(
@@ -306,50 +307,7 @@ export function registerSourceHandlers(
   });
 
   bot.command('setup_sources', async (ctx) => {
-    const starterQueries = [
-      'красные флаги в отношениях',
-      'ошибки в отношениях',
-      'первое свидание',
-      'переписка в отношениях',
-      'токсичные отношения',
-    ];
-    let created = 0;
-    const existing = sources.listAll();
-
-    if (!config.youtubeApiKey) {
-      await ctx.reply(
-        '❌ YOUTUBE_API_KEY не задан — YouTube Shorts источники не добавлены.\n' +
-          'Добавьте ключ в .env и повторите /setup_sources.',
-      );
-      return;
-    }
-
-    for (const query of starterQueries) {
-      const dup = existing.some((s) => {
-        if (s.type !== 'youtube_short_search') return false;
-        const cfg = sources.getConfig(s);
-        return String(cfg.query ?? '').trim() === query;
-      });
-      if (dup) continue;
-      sources.create({
-        type: 'youtube_short_search',
-        name: `YouTube Shorts: ${query}`,
-        config: { query },
-      });
-      created++;
-    }
-
-    let redditHint = '';
-    if (!config.redditClientId || !config.redditClientSecret) {
-      redditHint =
-        '\n\n💡 Reddit не настроен — для мемов добавьте REDDIT_CLIENT_ID/SECRET и /source_add reddit_subreddit relationshipmemes';
-    }
-
-    await ctx.reply(
-      `✅ Базовые источники настроены (+${created}).\n` +
-        'Теперь бот будет собирать ежедневный пакет.\n' +
-        'Откройте /today или дождитесь утреннего уведомления.' +
-        redditHint,
-    );
+    const result = runStarterSourcesSetup(sources, config);
+    await ctx.reply(formatStarterSourcesResult(result), { parse_mode: 'HTML' });
   });
 }

@@ -9,13 +9,15 @@ import { getAdapter } from './adapters/index.js';
 import { resolveChannelId } from './adapters/youtube.js';
 import {
   buildCaptionForItem,
+  buildForeignVideoIdeaCaption,
+  buildForeignVideoIdeaPost,
   buildPostFromItem,
   evaluateDiscoveredItem,
   toSourceItemInput,
 } from './pipeline.js';
 import type { DiscoveryRunResult, DiscoverySummary } from './types.js';
 
-export type CreateCandidateResult = 'created' | 'skipped' | 'duplicate';
+export type CreateCandidateResult = 'created' | 'skipped' | 'duplicate' | 'foreign_converted' | 'foreign_rejected';
 
 export class DiscoveryService {
   constructor(
@@ -46,6 +48,8 @@ export class DiscoveryService {
     const perSource: DiscoveryRunResult[] = [];
     let newCandidates = 0;
     let duplicatesSkipped = 0;
+    let foreignConverted = 0;
+    let foreignRejected = 0;
     const errors: string[] = [];
 
     for (const source of enabled) {
@@ -53,6 +57,8 @@ export class DiscoveryService {
       perSource.push(result);
       newCandidates += result.newCandidates;
       duplicatesSkipped += result.duplicatesSkipped;
+      foreignConverted += result.foreignConverted ?? 0;
+      foreignRejected += result.foreignRejected ?? 0;
       errors.push(...result.errors);
     }
 
@@ -60,6 +66,8 @@ export class DiscoveryService {
       checkedSources: enabled.length,
       newCandidates,
       duplicatesSkipped,
+      foreignConverted,
+      foreignRejected,
       errors,
       perSource,
     };
@@ -92,6 +100,8 @@ export class DiscoveryService {
       found: 0,
       newCandidates: 0,
       duplicatesSkipped: 0,
+      foreignConverted: 0,
+      foreignRejected: 0,
       errors: [],
     };
 
@@ -131,9 +141,14 @@ export class DiscoveryService {
         }
 
         try {
-          const outcome = await this.createCandidate(source, item);
+          const outcome = await this.createCandidate(source, item, result);
           if (outcome === 'created') {
             result.newCandidates++;
+          } else if (outcome === 'foreign_converted') {
+            result.newCandidates++;
+            result.foreignConverted = (result.foreignConverted ?? 0) + 1;
+          } else if (outcome === 'foreign_rejected') {
+            result.foreignRejected = (result.foreignRejected ?? 0) + 1;
           } else {
             result.duplicatesSkipped++;
           }
@@ -154,12 +169,19 @@ export class DiscoveryService {
     return result;
   }
 
-  private async createCandidate(source: Source, item: import('./types.js').DiscoveredItem): Promise<CreateCandidateResult> {
+  private async createCandidate(
+    source: Source,
+    item: import('./types.js').DiscoveredItem,
+    runResult?: DiscoveryRunResult,
+  ): Promise<CreateCandidateResult> {
     const existing = this.sourceItems.findByPlatformExternalId(item.platform, item.externalId);
     if (existing) return 'duplicate';
 
     const evaluation = await evaluateDiscoveredItem(item, this.config, this.ai);
     if (!evaluation.accept) {
+      if (evaluation.skipReason === 'foreign_language') {
+        runResult && (runResult.foreignRejected = (runResult.foreignRejected ?? 0) + 1);
+      }
       this.sourceItems.createSkippedItem(
         toSourceItemInput(source.id, item, {
           skipReason: evaluation.skipReason as SkipReason,
@@ -167,7 +189,11 @@ export class DiscoveryService {
           language: evaluation.language.language,
         }),
       );
-      return 'skipped';
+      return evaluation.skipReason === 'foreign_language' ? 'foreign_rejected' : 'skipped';
+    }
+
+    if (evaluation.adaptForeignToVideoIdea) {
+      return this.createForeignVideoIdeaCandidate(source, item);
     }
 
     const keywordWarnings = checkForbiddenContent(
@@ -216,6 +242,33 @@ export class DiscoveryService {
     );
 
     return 'created';
+  }
+
+  private async createForeignVideoIdeaCandidate(
+    source: Source,
+    item: import('./types.js').DiscoveredItem,
+  ): Promise<CreateCandidateResult> {
+    let caption = buildForeignVideoIdeaCaption(item.title);
+
+    if (this.ai) {
+      try {
+        caption = await this.ai.adaptForeignVideoToIdea(item, this.config.channelUsername);
+      } catch {
+        // template fallback
+      }
+    }
+
+    const itemInput = toSourceItemInput(source.id, item, {
+      language: 'en',
+      qualityScore: 5,
+      discoveryFormat: 'text_idea',
+    });
+
+    this.sourceItems.createCandidateWithPost(this.posts, itemInput, (sourceItemId) =>
+      buildForeignVideoIdeaPost(source, item, sourceItemId, caption),
+    );
+
+    return 'foreign_converted';
   }
 }
 

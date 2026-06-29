@@ -5,7 +5,10 @@ import type {
   ContentPackStatus,
   PackSection,
   PackSummary,
+  SectionBreakdown,
 } from '../types.js';
+import { classifyPostForSection } from './pack-diagnostics.js';
+import type { PostRepository } from './posts.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -52,13 +55,20 @@ export class ContentPackRepository {
     fields: Partial<
       Pick<
         ContentPack,
-        'status' | 'generated_at' | 'notified_at' | 'summary_json' | 'last_error'
+        'status' | 'generated_at' | 'notified_at' | 'summary_json' | 'diagnostics_json' | 'last_error'
       >
     >,
   ): ContentPack {
     const sets: string[] = ['updated_at = @updated_at'];
     const params: Record<string, unknown> = { id, updated_at: nowIso() };
-    for (const key of ['status', 'generated_at', 'notified_at', 'summary_json', 'last_error'] as const) {
+    for (const key of [
+      'status',
+      'generated_at',
+      'notified_at',
+      'summary_json',
+      'diagnostics_json',
+      'last_error',
+    ] as const) {
       if (key in fields) {
         sets.push(`${key} = @${key}`);
         params[key] = fields[key] ?? null;
@@ -170,6 +180,27 @@ export class ContentPackRepository {
     const total =
       counts.videos + counts.memes + counts.articles + counts.polls + counts.ideas + counts.other;
     return { ...counts, selected, total };
+  }
+
+  buildDetailedSummary(packId: number, posts: PostRepository): PackSummary {
+    const base = this.buildSummary(packId);
+    const items = this.listAllItems(packId);
+    const breakdown: Partial<Record<PackSection, SectionBreakdown>> = {};
+
+    for (const section of ['videos', 'memes', 'articles', 'polls', 'ideas'] as PackSection[]) {
+      const sectionItems = items.filter((i) => i.section === section);
+      let real = 0;
+      let backfill = 0;
+      for (const item of sectionItems) {
+        const post = posts.getById(item.post_id);
+        if (!post) continue;
+        if (classifyPostForSection(post, section) === 'real') real++;
+        else backfill++;
+      }
+      breakdown[section] = { total: sectionItems.length, real, backfill };
+    }
+
+    return { ...base, breakdown };
   }
 
   markScheduled(packId: number): void {

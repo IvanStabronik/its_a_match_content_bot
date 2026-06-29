@@ -14,38 +14,15 @@ import { PostRepository } from '../src/services/posts.js';
 import { SourceItemRepository, SourceRepository } from '../src/services/sources.js';
 import { sendByType } from '../src/services/telegram.js';
 
+import { makeTestConfig } from './test-config.js';
+
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
-  return {
-    contentBotToken: 't',
-    adminTelegramIds: [1],
-    channelUsername: 'ch',
-    openaiApiKey: null,
-    mainBotUsername: null,
-    databasePath: ':memory:',
-    backupDir: '/tmp',
-    timezone: 'Europe/Warsaw',
+  return makeTestConfig({
     youtubeApiKey: 'key',
-    discoveryEnabled: true,
-    discoveryIntervalMinutes: 360,
-    discoveryMaxItemsPerSource: 5,
-    discoveryLookbackHours: 168,
-    discoveryMinScore: 0,
-    discoveryAutoCreateCandidates: true,
-    youtubeRegionCode: 'RU',
-    youtubeRelevanceLanguage: 'ru',
-    youtubeShortsMaxSeconds: 90,
-    youtubeRejectOverSeconds: 180,
-    discoveryAllowedLanguages: ['ru'],
-    discoveryRejectForeignLanguage: true,
     discoveryMinQualityScore: 6,
     discoveryCreateLowScore: false,
-    redditClientId: null,
-    redditClientSecret: null,
-    redditUserAgent: 'test',
-    redditMaxPostsPerSource: 5,
-    redditAllowedSubreddits: ['dating'],
     ...overrides,
-  };
+  });
 }
 
 describe('v3 content quality', () => {
@@ -236,7 +213,8 @@ describe('v3 content quality', () => {
       createCandidate: (
         s: typeof source,
         item: import('../src/discovery/types.js').DiscoveredItem,
-      ) => Promise<'created' | 'skipped' | 'duplicate'>;
+        runResult?: import('../src/discovery/types.js').DiscoveryRunResult,
+      ) => Promise<'created' | 'skipped' | 'duplicate' | 'foreign_converted' | 'foreign_rejected'>;
     };
 
     const outcome = await service.createCandidate(source, {
@@ -251,11 +229,59 @@ describe('v3 content quality', () => {
       raw: {},
       discoveryFormat: 'youtube_short_link',
       durationSeconds: 45,
+      shortsUrl: 'https://youtube.com/shorts/en1',
     });
 
-    expect(outcome).toBe('skipped');
+    expect(outcome).toBe('foreign_converted');
+    expect(posts.countPending()).toBe(1);
+    const post = posts.getPendingPage(0, 1)[0]!;
+    expect(post.pack_section).toBe('videos');
+    expect(post.discovery_format).toBe('text_idea');
+    expect(post.type).toBe('text');
+  });
+
+  it('rejects foreign language when mode is reject', async () => {
+    const db = openDatabase(':memory:');
+    initSchema(db);
+    const posts = new PostRepository(db);
+    const sources = new SourceRepository(db);
+    const sourceItems = new SourceItemRepository(db);
+    const source = sources.create({
+      type: 'youtube_short_search',
+      name: 'Test',
+      config: { query: 'test' },
+    });
+    const discovery = new DiscoveryService(
+      sources,
+      sourceItems,
+      posts,
+      makeConfig({ discoveryForeignLanguageMode: 'reject' }),
+      null,
+    );
+    const service = discovery as unknown as {
+      createCandidate: (
+        s: typeof source,
+        item: import('../src/discovery/types.js').DiscoveredItem,
+      ) => Promise<string>;
+    };
+
+    const outcome = await service.createCandidate(source, {
+      platform: 'youtube',
+      externalId: 'en2',
+      url: 'https://youtube.com/watch?v=en2',
+      title: 'Dating red flags everyone should know',
+      description: 'English only content',
+      author: 'Ch',
+      publishedAt: new Date().toISOString(),
+      thumbnailUrl: null,
+      raw: {},
+      discoveryFormat: 'youtube_short_link',
+      durationSeconds: 45,
+    });
+
+    expect(outcome).toBe('foreign_rejected');
     expect(posts.countPending()).toBe(0);
-    const stored = sourceItems.findByPlatformExternalId('youtube', 'en1');
+    const stored = sourceItems.findByPlatformExternalId('youtube', 'en2');
     expect(stored?.skip_reason).toBe('foreign_language');
   });
 

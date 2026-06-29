@@ -218,6 +218,15 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 5,
+    name: 'pack_diagnostics',
+    up(db) {
+      if (tableExists(db, 'content_packs')) {
+        addColumnIfMissing(db, 'content_packs', 'diagnostics_json', 'TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations(db: Db): void {

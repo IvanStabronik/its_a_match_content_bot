@@ -517,6 +517,153 @@ export class AiModule {
     if (ideas.length === 0) throw new Error('AI не вернул идеи');
     return ideas;
   }
+
+  async adaptForeignVideoToIdea(
+    item: import('../discovery/types.js').DiscoveredItem,
+    channelUsername: string,
+  ): Promise<string> {
+    const metadata = [
+      item.title ? `Заголовок: ${item.title}` : null,
+      item.description ? `Описание: ${item.description}` : null,
+      item.url ? `URL (не вставлять): ${item.url}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Ты редактор @${channelUsername}. Нашли короткое видео на английском. ` +
+                'Напиши русский текст-идею для Telegram (300–600 символов): ' +
+                '«Нашёл короткое видео на английском по теме X. Для канала лучше использовать как текстовую идею: ...». ' +
+                'Не притворяйся, что видел видео. Не вставляй ссылку. JSON: {"caption":"..."}',
+            },
+            { role: 'user', content: metadata },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.75,
+        }),
+      'foreign_video_idea',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
+    const caption = (parsed.caption ?? '').trim().slice(0, 700);
+    if (caption.length < 80) throw new Error('AI вернул короткую адаптацию');
+    return caption;
+  }
+
+  async generateDailyVideoIdeas(
+    count: number,
+    channelUsername: string,
+  ): Promise<Array<{ caption: string; hook?: string }>> {
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Сгенерируй ${count} идей для коротких видео/постов @${channelUsername}. ` +
+                'Русский, 250–500 символов: hook + сценарий + подпись. Про отношения/дейтинг. ' +
+                'Это НЕ внешние видео — идеи для будущего контента. Без fake facts. ' +
+                'JSON: {"ideas":[{"caption":"...","hook":"..."}]}',
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.85,
+        }),
+      'daily_video_ideas',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
+      ideas?: Array<{ caption?: string; hook?: string }>;
+    };
+    const ideas = (parsed.ideas ?? [])
+      .slice(0, count)
+      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 700), hook: i.hook }))
+      .filter((i) => i.caption.length >= 80);
+
+    if (ideas.length === 0) throw new Error('AI не вернул video ideas');
+    return ideas;
+  }
+
+  async generateDailyMemeIdeas(
+    count: number,
+    channelUsername: string,
+  ): Promise<Array<{ caption: string }>> {
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Сгенерируй ${count} мемных текст-идей для @${channelUsername}. ` +
+                'Русский, 120–350 символов, про дейтинг/отношения. Лёгкий observational/meme tone. ' +
+                'Не токсично, не сексистски, не NSFW, не политика, не унижение полов. ' +
+                'JSON: {"ideas":[{"caption":"..."}]}',
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.9,
+        }),
+      'daily_meme_ideas',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
+      ideas?: Array<{ caption?: string }>;
+    };
+    const ideas = (parsed.ideas ?? [])
+      .slice(0, count)
+      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 400) }))
+      .filter((i) => i.caption.length >= 40);
+
+    if (ideas.length === 0) throw new Error('AI не вернул meme ideas');
+    return ideas;
+  }
+
+  async generateDailyExplainers(
+    count: number,
+    channelUsername: string,
+  ): Promise<Array<{ caption: string }>> {
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Сгенерируй ${count} мини-разборов для @${channelUsername}. ` +
+                '500–900 символов, русский, темы: отношения, общение, одиночество, приложения. ' +
+                'Формат «Разбор» — без fake statistics, без fake source, без «исследования говорят». ' +
+                'JSON: {"explainers":[{"caption":"..."}]}',
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.7,
+        }),
+      'daily_explainers',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
+      explainers?: Array<{ caption?: string }>;
+    };
+    const explainers = (parsed.explainers ?? [])
+      .slice(0, count)
+      .map((i) => ({ caption: (i.caption ?? '').trim().slice(0, 1000) }))
+      .filter((i) => i.caption.length >= 120);
+
+    if (explainers.length === 0) throw new Error('AI не вернул explainers');
+    return explainers;
+  }
 }
 
 function buildFallbackArticle(title: string | null | undefined): string {

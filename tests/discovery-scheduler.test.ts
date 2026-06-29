@@ -4,24 +4,10 @@ import type { AppConfig } from '../src/config.js';
 import { DiscoveryService } from '../src/discovery/service.js';
 import { DiscoveryScheduler } from '../src/services/discovery-scheduler.js';
 
+import { makeTestConfig } from './test-config.js';
+
 function makeConfig(): AppConfig {
-  return {
-    contentBotToken: 'token',
-    adminTelegramIds: [1],
-    channelUsername: 'ch',
-    openaiApiKey: null,
-    mainBotUsername: null,
-    databasePath: ':memory:',
-    backupDir: '/tmp',
-    timezone: 'Europe/Warsaw',
-    youtubeApiKey: null,
-    discoveryEnabled: true,
-    discoveryIntervalMinutes: 60,
-    discoveryMaxItemsPerSource: 5,
-    discoveryLookbackHours: 168,
-    discoveryMinScore: 0,
-    discoveryAutoCreateCandidates: true,
-  };
+  return makeTestConfig({ discoveryIntervalMinutes: 60 });
 }
 
 describe('DiscoveryScheduler overlap', () => {
@@ -36,6 +22,8 @@ describe('DiscoveryScheduler overlap', () => {
         checkedSources: 0,
         newCandidates: 0,
         duplicatesSkipped: 0,
+        foreignConverted: 0,
+        foreignRejected: 0,
         errors: [],
         perSource: [],
       }))),

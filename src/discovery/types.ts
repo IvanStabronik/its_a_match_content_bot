@@ -42,6 +42,8 @@ export interface DiscoveryRunResult {
   found: number;
   newCandidates: number;
   duplicatesSkipped: number;
+  foreignConverted?: number;
+  foreignRejected?: number;
   errors: string[];
 }
 
@@ -49,6 +51,8 @@ export interface DiscoverySummary {
   checkedSources: number;
   newCandidates: number;
   duplicatesSkipped: number;
+  foreignConverted: number;
+  foreignRejected: number;
   errors: string[];
   perSource: DiscoveryRunResult[];
 }

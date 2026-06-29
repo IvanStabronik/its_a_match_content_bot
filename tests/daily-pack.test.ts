@@ -20,51 +20,23 @@ import { sectionForPost } from '../src/services/pack-sections.js';
 import { PostRepository } from '../src/services/posts.js';
 import { SourceItemRepository, SourceRepository } from '../src/services/sources.js';
 import type { Post } from '../src/types.js';
+import { emptyDiscoverySummary, makeTestConfig } from './test-config.js';
 
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
-  return {
-    contentBotToken: 't',
-    adminTelegramIds: [1],
-    channelUsername: 'ch',
-    openaiApiKey: null,
-    mainBotUsername: null,
-    databasePath: ':memory:',
-    backupDir: '/tmp',
-    timezone: 'Europe/Warsaw',
-    youtubeApiKey: 'key',
-    discoveryEnabled: true,
-    discoveryIntervalMinutes: 360,
-    discoveryMaxItemsPerSource: 5,
-    discoveryLookbackHours: 168,
-    discoveryMinScore: 0,
-    discoveryAutoCreateCandidates: true,
-    youtubeRegionCode: 'RU',
-    youtubeRelevanceLanguage: 'ru',
-    youtubeShortsMaxSeconds: 90,
-    youtubeRejectOverSeconds: 180,
-    discoveryAllowedLanguages: ['ru'],
-    discoveryRejectForeignLanguage: true,
-    discoveryMinQualityScore: 0,
-    discoveryCreateLowScore: true,
-    redditClientId: null,
-    redditClientSecret: null,
-    redditUserAgent: 'test',
-    redditMaxPostsPerSource: 5,
-    redditAllowedSubreddits: ['dating'],
-    dailyPackEnabled: true,
-    dailyPackTime: '10:00',
-    dailyPackTimezone: 'Europe/Warsaw',
+  return makeTestConfig({
+    dailyPackMinVideos: 2,
+    dailyPackMinMemes: 1,
+    dailyPackMinArticles: 1,
+    dailyPackMinPolls: 2,
+    dailyPackMinIdeas: 2,
     dailyPackVideoTarget: 2,
     dailyPackMemeTarget: 1,
     dailyPackArticleTarget: 1,
     dailyPackPollTarget: 2,
     dailyPackIdeaTarget: 2,
     dailyPackMaxTotal: 20,
-    dailyScheduleSlots: ['11:00', '13:30', '16:00', '18:30', '21:00'],
-    dailyAutoDiscoveryLookbackHours: 48,
-    dailyPackNotifyAdmins: true,
     ...overrides,
-  };
+  });
 }
 
 describe('Daily content pack v4', () => {
@@ -92,14 +64,8 @@ describe('Daily content pack v4', () => {
     const sourceItems = new SourceItemRepository(db);
     const config = makeConfig();
     const discovery = new DiscoveryService(sources, sourceItems, posts, config, null);
-    vi.spyOn(discovery, 'discoverAll').mockResolvedValue({
-      checkedSources: 0,
-      newCandidates: 0,
-      duplicatesSkipped: 0,
-      errors: [],
-      perSource: [],
-    });
-    const dailyPack = new DailyPackService(packs, posts, discovery, config, null);
+    vi.spyOn(discovery, 'discoverAll').mockResolvedValue(emptyDiscoverySummary());
+    const dailyPack = new DailyPackService(packs, posts, discovery, sources, config, null);
     return { db, posts, packs, dailyPack, config, discovery };
   }
 

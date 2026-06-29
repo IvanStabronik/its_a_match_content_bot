@@ -15,6 +15,8 @@ import {
 import { formatModerationCardForPost } from '../moderation-card.js';
 import { escapeHtml } from '../messages.js';
 import { clearSession, getSession, setSession } from '../session.js';
+import { formatPackDiagnosticsText } from '../../services/pack-diagnostics.js';
+import { formatStarterSourcesResult, runStarterSourcesSetup } from '../../services/starter-sources.js';
 
 const SECTIONS: PackSection[] = ['videos', 'memes', 'articles', 'polls', 'ideas'];
 
@@ -51,8 +53,13 @@ export function registerDailyPackHandlers(
   });
 
   bot.command('today_rebuild', async (ctx) => {
-    await ctx.reply('🔄 Пересобираю пакет…');
-    await dailyPack.rebuildTodayPack();
+    await ctx.reply('🔄 Пересобираю пакет (discovery + AI backfill)…');
+    const result = await dailyPack.rebuildTodayPack();
+    const summaryText =
+      `✅ Пакет пересобран.\n\n` +
+      `Видео: ${result.summary.videos} · Мемы: ${result.summary.memes} · Разборы: ${result.summary.articles}\n` +
+      `Опросы: ${result.summary.polls} · Идеи: ${result.summary.ideas}`;
+    await ctx.reply(summaryText);
     await showTodayMenu(ctx, false);
   });
 
@@ -62,6 +69,28 @@ export function registerDailyPackHandlers(
 
   bot.command('schedule_day', async (ctx) => {
     await showSchedulePreview(ctx);
+  });
+
+  bot.command('pack_diagnostics', async (ctx) => {
+    const pack = dailyPack.createOrGetTodayPack();
+    if (!pack.generated_at) {
+      await ctx.reply('⏳ Пакет ещё не собран. Запустите /today_generate или /today_rebuild.');
+      return;
+    }
+    const diagnostics = dailyPack.getPackDiagnostics(pack);
+    await ctx.reply(formatPackDiagnosticsText(diagnostics, config), { parse_mode: 'HTML' });
+  });
+
+  bot.callbackQuery('pack:diagnostics', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const pack = dailyPack.createOrGetTodayPack();
+    const diagnostics = dailyPack.getPackDiagnostics(pack);
+    const text = formatPackDiagnosticsText(diagnostics, config);
+    if (ctx.callbackQuery.message) {
+      await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: dailyPackMainKeyboard() });
+    } else {
+      await ctx.reply(text, { parse_mode: 'HTML', reply_markup: dailyPackMainKeyboard() });
+    }
   });
 
   bot.callbackQuery('pack:menu', async (ctx) => {
