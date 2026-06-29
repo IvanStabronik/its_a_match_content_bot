@@ -7,16 +7,52 @@ function keyboardTexts(aiEnabled: boolean): string[] {
   return kb.inline_keyboard.flat().map((button) => button.text);
 }
 
+function basePost(overrides: Partial<Post> = {}): Post {
+  return {
+    id: 1,
+    type: 'text',
+    status: 'pending',
+    category: 'dating_meme',
+    source_url: null,
+    media_file_id: null,
+    media_url: null,
+    caption: 'Пример текста',
+    raw_text: 'Пример текста',
+    ai_score: 7,
+    risk_score: 8,
+    risk_reason: 'тестовая причина',
+    warnings: null,
+    poll_question: null,
+    poll_options_json: null,
+    scheduled_at: null,
+    posted_at: null,
+    telegram_message_id: null,
+    last_error: null,
+    publishing_started_at: null,
+    created_by: '1',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    deleted_at: null,
+    discovery_source_id: null,
+    discovery_item_id: null,
+    source_title: null,
+    source_author: null,
+    thumbnail_url: null,
+    discovered_at: null,
+    ...overrides,
+  };
+}
+
 describe('Moderation UI', () => {
-  it('does not include ♻️ Рерайт when AI is disabled', () => {
+  it('does not include AI-варианты when AI is disabled', () => {
     const texts = keyboardTexts(false);
+    expect(texts.some((t) => t.includes('AI-варианты'))).toBe(false);
     expect(texts.some((t) => t.includes('Рерайт'))).toBe(false);
-    expect(texts.some((t) => t.includes('Rewrite'))).toBe(false);
   });
 
-  it('includes ♻️ Рерайт when AI is enabled', () => {
+  it('includes AI-варианты when AI is enabled', () => {
     const texts = keyboardTexts(true);
-    expect(texts).toContain('♻️ Рерайт');
+    expect(texts).toContain('✨ AI-варианты');
   });
 
   it('uses Russian button labels', () => {
@@ -29,34 +65,7 @@ describe('Moderation UI', () => {
   });
 
   it('uses Russian labels in Moderation_Card', () => {
-    const post: Post = {
-      id: 1,
-      type: 'text',
-      status: 'pending',
-      category: 'dating_meme',
-      source_url: null,
-      media_file_id: null,
-      media_url: null,
-      caption: 'Пример текста',
-      raw_text: 'Пример текста',
-      ai_score: 7,
-      risk_score: 8,
-      risk_reason: 'тестовая причина',
-      warnings: null,
-      poll_question: null,
-      poll_options_json: null,
-      scheduled_at: null,
-      posted_at: null,
-      telegram_message_id: null,
-      last_error: null,
-      publishing_started_at: null,
-      created_by: '1',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      deleted_at: null,
-    };
-
-    const card = formatModerationCard(post, 'Europe/Warsaw');
+    const card = formatModerationCard(basePost(), 'Europe/Warsaw');
     expect(card).toContain('<b>Кандидат #1</b>');
     expect(card).toContain('Текст:');
     expect(card).toContain('Оценка AI:');
@@ -64,5 +73,26 @@ describe('Moderation UI', () => {
     expect(card).toContain('Причина риска:');
     expect(card).not.toContain('Caption:');
     expect(card).not.toContain('Risk reason:');
+  });
+
+  it('displays discovery metadata in moderation card', () => {
+    const card = formatModerationCard(
+      basePost({
+        type: 'link',
+        source_url: 'https://youtube.com/watch?v=abc',
+        source_title: 'Video title',
+        source_author: 'Channel Name',
+        discovered_at: '2026-06-28T12:00:00.000Z',
+        discovery_source_id: 3,
+      }),
+      'Europe/Warsaw',
+      { platformLabel: 'YouTube канал', sourceName: 'My YT Source' },
+    );
+    expect(card).toContain('Источник:');
+    expect(card).toContain('YouTube канал');
+    expect(card).toContain('My YT Source');
+    expect(card).toContain('Video title');
+    expect(card).toContain('Channel Name');
+    expect(card).toContain('Найдено:');
   });
 });

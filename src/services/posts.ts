@@ -42,11 +42,15 @@ export class PostRepository {
       INSERT INTO posts (
         type, status, category, source_url, media_file_id, media_url,
         caption, raw_text, created_by, created_at, updated_at,
-        poll_question, poll_options_json, scheduled_at
+        poll_question, poll_options_json, scheduled_at,
+        discovery_source_id, discovery_item_id, source_title, source_author,
+        thumbnail_url, discovered_at, ai_score, risk_score, risk_reason, warnings
       ) VALUES (
         @type, @status, @category, @source_url, @media_file_id, @media_url,
         @caption, @raw_text, @created_by, @created_at, @updated_at,
-        @poll_question, @poll_options_json, @scheduled_at
+        @poll_question, @poll_options_json, @scheduled_at,
+        @discovery_source_id, @discovery_item_id, @source_title, @source_author,
+        @thumbnail_url, @discovered_at, @ai_score, @risk_score, @risk_reason, @warnings
       )
     `);
     const result = stmt.run({
@@ -64,6 +68,16 @@ export class PostRepository {
       poll_question: input.poll_question ?? null,
       poll_options_json: input.poll_options_json ?? null,
       scheduled_at: input.scheduled_at ?? null,
+      discovery_source_id: input.discovery_source_id ?? null,
+      discovery_item_id: input.discovery_item_id ?? null,
+      source_title: input.source_title ?? null,
+      source_author: input.source_author ?? null,
+      thumbnail_url: input.thumbnail_url ?? null,
+      discovered_at: input.discovered_at ?? null,
+      ai_score: input.ai_score ?? null,
+      risk_score: input.risk_score ?? null,
+      risk_reason: input.risk_reason ?? null,
+      warnings: input.warnings ?? null,
     });
     return this.getById(Number(result.lastInsertRowid))!;
   }

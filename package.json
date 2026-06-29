@@ -17,7 +17,8 @@
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "grammy": "^1.35.0",
-    "openai": "^4.85.4"
+    "openai": "^4.85.4",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

@@ -193,6 +193,116 @@ export class AiModule {
     const parsed = JSON.parse(content) as { cta?: string };
     return (parsed.cta ?? '').slice(0, 200);
   }
+
+  async generateDiscoveryCaption(
+    item: import('../discovery/types.js').DiscoveredItem,
+    channelUsername: string,
+  ): Promise<{
+    caption: string;
+    category: PostCategory;
+    aiScore: number;
+    riskScore: number;
+    riskReason: string;
+    warnings: import('../types.js').Warning[];
+  }> {
+    const metadata = [
+      item.title ? `Заголовок: ${item.title}` : null,
+      item.description ? `Описание: ${item.description}` : null,
+      item.author ? `Автор: ${item.author}` : null,
+      item.url ? `URL: ${item.url}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Ты редактор Telegram-канала @${channelUsername} про отношения, дейтинг и общение. ` +
+                'Сгенерируй подпись на русском (300–700 символов): лёгкий, слегка мемный, умный тон. ' +
+                'Без политики, религии, NSFW, унижения по полу. Не вставляй ссылку — пост и так будет ссылкой. ' +
+                'JSON: {"caption":"...","category":"slug","ai_score":число,"risk_score":число,"risk_reason":"..."} ' +
+                `category slug из: ${PREDEFINED_CATEGORIES.join(', ')}`,
+            },
+            { role: 'user', content: metadata || 'Без метаданных' },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.7,
+        }),
+      'discovery_caption',
+    );
+
+    const content = response.choices[0]?.message?.content ?? '{}';
+    const parsed = JSON.parse(content) as {
+      caption?: string;
+      category?: string;
+      ai_score?: number;
+      risk_score?: number;
+      risk_reason?: string;
+    };
+
+    const caption = (parsed.caption ?? '').trim().slice(0, 700);
+    if (caption.length < 50) throw new Error('AI вернул слишком короткую подпись');
+
+    const categorySlug = parsed.category ?? 'link';
+    const category = (PREDEFINED_CATEGORIES as readonly string[]).includes(categorySlug)
+      ? (categorySlug as PostCategory)
+      : 'link';
+
+    return {
+      caption,
+      category,
+      aiScore: Math.min(10, Math.max(1, Math.round(parsed.ai_score ?? 6))),
+      riskScore: Math.min(10, Math.max(1, Math.round(parsed.risk_score ?? 2))),
+      riskReason: parsed.risk_reason ?? 'Без объяснения',
+      warnings: [],
+    };
+  }
+
+  async generateDiscoveryVariants(
+    item: import('../discovery/types.js').DiscoveredItem,
+    currentCaption: string,
+    channelUsername: string,
+  ): Promise<string[]> {
+    const metadata = [
+      item.title ? `Заголовок: ${item.title}` : null,
+      item.description ? `Описание: ${item.description}` : null,
+      item.author ? `Автор: ${item.author}` : null,
+      `Текущая подпись: ${currentCaption}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Ты редактор Telegram-канала @${channelUsername}. ` +
+                'Сгенерируй 3 альтернативные подписи на русском (300–700 символов каждая) для материала про отношения. ' +
+                'JSON: {"variants":["...","...","..."]}',
+            },
+            { role: 'user', content: metadata },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.85,
+        }),
+      'discovery_variants',
+    );
+
+    const content = response.choices[0]?.message?.content ?? '{}';
+    const parsed = JSON.parse(content) as { variants?: string[] };
+    const variants = (parsed.variants ?? []).slice(0, 3).map((v) => v.slice(0, 700));
+    if (variants.length === 0) throw new Error('AI не вернул варианты');
+    return variants;
+  }
 }
 
 export function createAiModule(

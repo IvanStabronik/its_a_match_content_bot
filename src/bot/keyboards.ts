@@ -17,7 +17,7 @@ export function moderationKeyboard(
     .text('📝 Изменить текст', `mod:edit:${postId}`);
 
   if (aiEnabled) {
-    kb.text('♻️ Рерайт', `mod:rewrite:${postId}`);
+    kb.text('✨ AI-варианты', `mod:rewrite:${postId}`);
   }
 
   kb.row().text('❌ Пропустить', `mod:skip:${postId}`).text('🗑 Удалить', `mod:delete:${postId}`);
@@ -40,7 +40,11 @@ export function rewriteVariantsKeyboard(postId: number, count: number): InlineKe
   return kb;
 }
 
-export function formatModerationCard(post: Post, timezone: string): string {
+export function formatModerationCard(
+  post: Post,
+  timezone: string,
+  discovery?: { platformLabel?: string | null; sourceName?: string | null },
+): string {
   const warnings = post.warnings
     ? (JSON.parse(post.warnings) as Array<{ message: string }>)
     : [];
@@ -56,6 +60,17 @@ export function formatModerationCard(post: Post, timezone: string): string {
     `📋 <b>Кандидат #${post.id}</b>`,
     `Тип: <code>${escapeHtml(post.type)}</code>`,
     `Статус: <code>${escapeHtml(post.status)}</code>`,
+    post.discovery_source_id && discovery?.platformLabel
+      ? `Источник: ${escapeHtml(discovery.platformLabel)}`
+      : null,
+    post.discovery_source_id && discovery?.sourceName
+      ? `Название источника: ${escapeHtml(discovery.sourceName)}`
+      : null,
+    post.source_title ? `Заголовок: ${escapeHtml(post.source_title)}` : null,
+    post.source_author ? `Автор/канал: ${escapeHtml(post.source_author)}` : null,
+    post.discovered_at
+      ? `Найдено: ${formatDateTime(post.discovered_at, timezone)}`
+      : null,
     post.category ? `Категория: ${escapeHtml(post.category)}` : null,
     post.source_url ? `URL: ${escapeHtml(post.source_url)}` : null,
     `Текст: ${escapeHtml(truncateCaption(captionSource))}`,

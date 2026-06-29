@@ -1,7 +1,9 @@
 import type { Context } from 'grammy';
 import type { AppConfig } from '../../config.js';
 import type { PostRepository } from '../../services/posts.js';
-import { formatModerationCard, moderationKeyboard } from '../keyboards.js';
+import type { SourceRepository } from '../../services/sources.js';
+import { moderationKeyboard } from '../keyboards.js';
+import { formatModerationCardForPost } from '../moderation-card.js';
 import { QUEUE_EMPTY, queueWarningIfNeeded } from '../messages.js';
 import { getQueuePage, setQueuePage } from '../session.js';
 
@@ -13,6 +15,7 @@ export async function showQueuePage(
   config: AppConfig,
   page: number,
   aiEnabled: boolean,
+  sources?: SourceRepository,
 ): Promise<void> {
   const total = posts.countPending();
   if (total === 0) {
@@ -31,7 +34,7 @@ export async function showQueuePage(
 
   const post = items[0];
   const warning = queueWarningIfNeeded(total);
-  const text = formatModerationCard(post, config.timezone) + warning;
+  const text = formatModerationCardForPost(post, config.timezone, sources) + warning;
   const kb = moderationKeyboard(post.id, safePage, totalPages, aiEnabled);
 
   if (ctx.callbackQuery) {
@@ -46,10 +49,11 @@ export function registerQueueCommand(
   posts: PostRepository,
   config: AppConfig,
   aiEnabled: boolean,
+  sources?: SourceRepository,
 ): void {
   bot.command('queue', async (ctx) => {
     setQueuePage(ctx.from!.id, 0);
-    await showQueuePage(ctx, posts, config, 0, aiEnabled);
+    await showQueuePage(ctx, posts, config, 0, aiEnabled, sources);
   });
 }
 

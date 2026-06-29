@@ -33,6 +33,9 @@ export function getCommandList(aiEnabled: boolean): string {
     '/stats — статистика',
     '/testpost — тестовая публикация в канал',
     '/backup — резервная копия базы данных',
+    '/sources — список источников контента',
+    '/source_add — добавить источник (YouTube / RSS)',
+    '/discover — проверить все активные источники',
   ];
 
   if (aiEnabled) {

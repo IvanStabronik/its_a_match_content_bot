@@ -48,6 +48,12 @@ export interface Post {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  discovery_source_id: number | null;
+  discovery_item_id: number | null;
+  source_title: string | null;
+  source_author: string | null;
+  thumbnail_url: string | null;
+  discovered_at: string | null;
 }
 
 export interface CreatePostInput {
@@ -63,6 +69,54 @@ export interface CreatePostInput {
   poll_question?: string | null;
   poll_options_json?: string | null;
   scheduled_at?: string | null;
+  discovery_source_id?: number | null;
+  discovery_item_id?: number | null;
+  source_title?: string | null;
+  source_author?: string | null;
+  thumbnail_url?: string | null;
+  discovered_at?: string | null;
+  ai_score?: number | null;
+  risk_score?: number | null;
+  risk_reason?: string | null;
+  warnings?: string | null;
+}
+
+export type SourceType = 'youtube_channel' | 'youtube_search' | 'rss' | 'reddit';
+
+export interface Source {
+  id: number;
+  type: SourceType;
+  name: string;
+  config_json: string;
+  enabled: number;
+  last_checked_at: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SourceItem {
+  id: number;
+  source_id: number;
+  platform: string;
+  external_id: string;
+  url: string;
+  title: string | null;
+  description: string | null;
+  author: string | null;
+  published_at: string | null;
+  thumbnail_url: string | null;
+  raw_json: string | null;
+  candidate_post_id: number | null;
+  created_at: string;
+}
+
+export interface CreateSourceInput {
+  type: SourceType;
+  name: string;
+  config: Record<string, unknown>;
+  enabled?: boolean;
 }
 
 export interface PostStats {

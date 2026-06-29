@@ -4,12 +4,14 @@ import type { AppConfig } from '../../config.js';
 import { logger } from '../../logger.js';
 import { PublishClaimError } from '../../types.js';
 import type { PostRepository } from '../../services/posts.js';
+import type { SourceItemRepository } from '../../services/sources.js';
+import type { SourceRepository } from '../../services/sources.js';
 import { PublisherService } from '../../services/publisher.js';
 import {
-  formatModerationCard,
   moderationKeyboard,
   rewriteVariantsKeyboard,
 } from '../keyboards.js';
+import { formatModerationCardForPost } from '../moderation-card.js';
 import { alreadyPublishedError, publishInProgressError } from '../messages.js';
 import { schedulePrompt } from './content.js';
 import {
@@ -24,13 +26,15 @@ export function registerCallbackHandlers(
   posts: PostRepository,
   publisher: PublisherService,
   ai: AiModule | null,
+  sources?: SourceRepository,
+  sourceItems?: SourceItemRepository,
 ): void {
   const aiEnabled = ai !== null;
 
   bot.callbackQuery(/^queue:page:(\d+)$/, async (ctx) => {
     const page = Number(ctx.match[1]);
     setQueuePage(ctx.from.id, page);
-    await showQueuePage(ctx, posts, config, page, aiEnabled);
+    await showQueuePage(ctx, posts, config, page, aiEnabled, sources);
     await ctx.answerCallbackQuery();
   });
 
@@ -88,13 +92,38 @@ export function registerCallbackHandlers(
 
       try {
         const caption = post.caption || post.raw_text || '';
-        const variants = await ai.rewriteCaption(caption);
+        let variants: string[];
+
+        if (post.discovery_item_id && sourceItems) {
+          const item = sourceItems.getById(post.discovery_item_id);
+          if (item) {
+            variants = await ai.generateDiscoveryVariants(
+              {
+                platform: item.platform,
+                externalId: item.external_id,
+                url: item.url,
+                title: item.title,
+                description: item.description,
+                author: item.author,
+                publishedAt: item.published_at,
+                thumbnailUrl: item.thumbnail_url,
+                raw: item.raw_json ? JSON.parse(item.raw_json) : null,
+              },
+              caption,
+              config.channelUsername,
+            );
+          } else {
+            variants = await ai.rewriteCaption(caption);
+          }
+        } else {
+          variants = await ai.rewriteCaption(caption);
+        }
 
         setSession(ctx.from.id, { type: 'rewrite_select', postId, variants });
 
-      const formatted = variants.map((v, i) => `Вариант ${i + 1}:\n${v}`).join('\n\n');
+        const formatted = variants.map((v, i) => `Вариант ${i + 1}:\n${v}`).join('\n\n');
 
-        await ctx.reply(`♻️ Варианты рерайта:\n\n${formatted}`, {
+        await ctx.reply(`✨ AI-варианты:\n\n${formatted}`, {
           reply_markup: rewriteVariantsKeyboard(postId, variants.length),
         });
       } catch (err) {
@@ -159,7 +188,7 @@ export function registerCallbackHandlers(
     await ctx.answerCallbackQuery({ text: 'Пропущено' });
 
     const page = getQueuePage(ctx.from.id);
-    await showNextInQueue(ctx, posts, config, page, aiEnabled);
+    await showNextInQueue(ctx, posts, config, page, aiEnabled, sources);
   });
 
   bot.callbackQuery(/^mod:delete:(\d+)$/, async (ctx) => {
@@ -171,7 +200,7 @@ export function registerCallbackHandlers(
     await ctx.answerCallbackQuery({ text: 'Удалено' });
 
     const page = getQueuePage(ctx.from.id);
-    await showNextInQueue(ctx, posts, config, page, aiEnabled);
+    await showNextInQueue(ctx, posts, config, page, aiEnabled, sources);
   });
 }
 
@@ -181,6 +210,7 @@ async function showNextInQueue(
   config: AppConfig,
   page: number,
   aiEnabled: boolean,
+  sources?: SourceRepository,
 ): Promise<void> {
   const total = posts.countPending();
   if (total === 0) {
@@ -195,7 +225,7 @@ async function showNextInQueue(
   const items = posts.getPendingPage(safePage, QUEUE_PAGE_SIZE);
 
   if (items.length === 0 && safePage > 0) {
-    await showQueuePage(ctx, posts, config, safePage - 1, aiEnabled);
+    await showQueuePage(ctx, posts, config, safePage - 1, aiEnabled, sources);
     return;
   }
 
@@ -205,7 +235,7 @@ async function showNextInQueue(
   }
 
   const post = items[0];
-  await ctx.editMessageText(formatModerationCard(post, config.timezone), {
+  await ctx.editMessageText(formatModerationCardForPost(post, config.timezone, sources), {
     parse_mode: 'HTML',
     reply_markup: moderationKeyboard(post.id, safePage, totalPages, aiEnabled),
   });
