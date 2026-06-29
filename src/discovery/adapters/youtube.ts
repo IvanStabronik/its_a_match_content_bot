@@ -1,10 +1,6 @@
 import type { Source } from '../../types.js';
 import type { DiscoveredItem, DiscoveryLimits, SourceAdapter } from '../types.js';
-
-const YOUTUBE_API = 'https://www.googleapis.com/youtube/v3';
-
-const MISSING_KEY_MSG =
-  'YouTube API недоступен: не задан YOUTUBE_API_KEY. Добавьте ключ в .env.';
+import { requireYoutubeKey, youtubeGet } from './youtube-api.js';
 
 interface YouTubeSearchItem {
   id?: { videoId?: string };
@@ -17,21 +13,22 @@ interface YouTubeSearchItem {
   };
 }
 
-async function youtubeGet<T>(
-  path: string,
-  params: Record<string, string>,
-  apiKey: string,
-): Promise<T> {
-  const url = new URL(`${YOUTUBE_API}/${path}`);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  url.searchParams.set('key', apiKey);
-
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(20_000) });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`YouTube API error ${res.status}: ${body.slice(0, 200)}`);
-  }
-  return (await res.json()) as T;
+function mapYouTubeItem(item: YouTubeSearchItem): DiscoveredItem | null {
+  const videoId = item.id?.videoId;
+  if (!videoId) return null;
+  const snippet = item.snippet;
+  return {
+    platform: 'youtube',
+    externalId: videoId,
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    title: snippet?.title?.trim() || null,
+    description: snippet?.description?.trim()?.slice(0, 2000) || null,
+    author: snippet?.channelTitle?.trim() || null,
+    publishedAt: snippet?.publishedAt ?? null,
+    thumbnailUrl: snippet?.thumbnails?.high?.url ?? snippet?.thumbnails?.default?.url ?? null,
+    raw: item,
+    discoveryFormat: 'youtube_video_link',
+  };
 }
 
 export function parseYouTubeChannelInput(input: string): {
@@ -84,23 +81,6 @@ export async function resolveChannelId(
   throw new Error('Не удалось определить YouTube channel ID. Укажите @handle, URL или UC… ID.');
 }
 
-function mapYouTubeItem(item: YouTubeSearchItem): DiscoveredItem | null {
-  const videoId = item.id?.videoId;
-  if (!videoId) return null;
-  const snippet = item.snippet;
-  return {
-    platform: 'youtube',
-    externalId: videoId,
-    url: `https://www.youtube.com/watch?v=${videoId}`,
-    title: snippet?.title?.trim() || null,
-    description: snippet?.description?.trim()?.slice(0, 2000) || null,
-    author: snippet?.channelTitle?.trim() || null,
-    publishedAt: snippet?.publishedAt ?? null,
-    thumbnailUrl: snippet?.thumbnails?.high?.url ?? snippet?.thumbnails?.default?.url ?? null,
-    raw: item,
-  };
-}
-
 async function fetchYouTubeVideos(
   params: Record<string, string>,
   limits: DiscoveryLimits,
@@ -137,12 +117,12 @@ export const youtubeChannelAdapter: SourceAdapter = {
     return null;
   },
 
-  async fetchRecentItems(source, limits, apiKey) {
-    if (!apiKey) throw new Error(MISSING_KEY_MSG);
-    const config = JSON.parse(source.config_json) as Record<string, unknown>;
-    const input = String(config.input ?? config.channelId ?? '');
-    const channelId = await resolveChannelId(input, apiKey, config);
-    config.channelId = channelId;
+  async fetchRecentItems(source, limits, config) {
+    const apiKey = requireYoutubeKey(config);
+    const sourceConfig = JSON.parse(source.config_json) as Record<string, unknown>;
+    const input = String(sourceConfig.input ?? sourceConfig.channelId ?? '');
+    const channelId = await resolveChannelId(input, apiKey, sourceConfig);
+    sourceConfig.channelId = channelId;
     return fetchYouTubeVideos({ channelId }, limits, apiKey);
   },
 };
@@ -156,9 +136,18 @@ export const youtubeSearchAdapter: SourceAdapter = {
     return null;
   },
 
-  async fetchRecentItems(source, limits, apiKey) {
-    if (!apiKey) throw new Error(MISSING_KEY_MSG);
-    const config = JSON.parse(source.config_json) as { query: string };
-    return fetchYouTubeVideos({ q: config.query }, limits, apiKey);
+  async fetchRecentItems(source, limits, config) {
+    const apiKey = requireYoutubeKey(config);
+    const sourceConfig = JSON.parse(source.config_json) as { query: string };
+    return fetchYouTubeVideos(
+      {
+        q: sourceConfig.query,
+        relevanceLanguage: config.youtubeRelevanceLanguage,
+        regionCode: config.youtubeRegionCode,
+      },
+      limits,
+      apiKey,
+    );
   },
 };
+

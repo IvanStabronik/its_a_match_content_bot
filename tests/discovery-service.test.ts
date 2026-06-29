@@ -29,6 +29,19 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     discoveryLookbackHours: 168,
     discoveryMinScore: 0,
     discoveryAutoCreateCandidates: true,
+    youtubeRegionCode: 'RU',
+    youtubeRelevanceLanguage: 'ru',
+    youtubeShortsMaxSeconds: 90,
+    youtubeRejectOverSeconds: 180,
+    discoveryAllowedLanguages: ['ru'],
+    discoveryRejectForeignLanguage: true,
+    discoveryMinQualityScore: 0,
+    discoveryCreateLowScore: true,
+    redditClientId: null,
+    redditClientSecret: null,
+    redditUserAgent: 'test',
+    redditMaxPostsPerSource: 5,
+    redditAllowedSubreddits: ['dating'],
     ...overrides,
   };
 }
@@ -37,12 +50,13 @@ const sampleItem: DiscoveredItem = {
   platform: 'rss',
   externalId: 'item-1',
   url: 'https://example.com/a',
-  title: 'Dating tips',
-  description: 'About relationships',
+  title: 'Советы по отношениям',
+  description: 'О переписке и первых свиданиях',
   author: 'Blog',
   publishedAt: new Date().toISOString(),
   thumbnailUrl: null,
   raw: {},
+  discoveryFormat: 'article_summary',
 };
 
 describe('DiscoveryService', () => {
@@ -78,7 +92,7 @@ describe('DiscoveryService', () => {
         source: ReturnType<SourceRepository['create']>,
         item: DiscoveredItem,
         warnings: [],
-      ) => Promise<'created' | 'duplicate' | 'skipped_low_score'>;
+      ) => Promise<'created' | 'duplicate' | 'skipped'>;
       processSource: (source: ReturnType<SourceRepository['create']>) => Promise<unknown>;
     };
   }
@@ -135,6 +149,15 @@ describe('DiscoveryService', () => {
         riskReason: 'ok',
         warnings: [],
       }),
+      generateArticleSummary: vi.fn().mockResolvedValue({
+        caption: 'A'.repeat(60),
+        category: 'link',
+        aiScore: 3,
+        riskScore: 2,
+        riskReason: 'ok',
+        warnings: [],
+        qualityScore: 3,
+      }),
     } as unknown as AiModule;
 
     const discovery = new DiscoveryService(
@@ -146,7 +169,7 @@ describe('DiscoveryService', () => {
     );
     const service = svc(discovery);
 
-    expect(await service.createCandidate(source, sampleItem, [])).toBe('skipped_low_score');
+    expect(await service.createCandidate(source, sampleItem, [])).toBe('skipped');
     expect(posts.countPending()).toBe(0);
 
     const stored = sourceItems.findByPlatformExternalId('rss', 'item-1');
@@ -192,8 +215,8 @@ describe('DiscoveryService', () => {
 
   it('uses template caption when AI is disabled', () => {
     const caption = buildTemplateCaption(sampleItem);
-    expect(caption).toContain('Нашёл материал');
-    expect(caption).toContain('Dating tips');
+    expect(caption).toContain('📰 Материал');
+    expect(caption).toContain('Советы по отношениям');
     expect(caption).toContain('Что думаете?');
   });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatModerationCard, moderationKeyboard } from '../src/bot/keyboards.js';
+import { discoveryFormatLabel } from '../src/discovery/format-labels.js';
 import type { Post } from '../src/types.js';
 
 function keyboardTexts(aiEnabled: boolean): string[] {
@@ -52,7 +53,8 @@ describe('Moderation UI', () => {
 
   it('includes AI-варианты when AI is enabled', () => {
     const texts = keyboardTexts(true);
-    expect(texts).toContain('✨ AI-варианты');
+    expect(texts).toContain('🇷🇺 Адаптировать на русский');
+    expect(texts).toContain('🧠 Сделать текст-пост');
   });
 
   it('uses Russian button labels', () => {
@@ -94,5 +96,23 @@ describe('Moderation UI', () => {
     expect(card).toContain('Video title');
     expect(card).toContain('Channel Name');
     expect(card).toContain('Найдено:');
+  });
+
+  it('shows format language and duration on queue card', () => {
+    const card = formatModerationCard(
+      basePost({
+        discovery_format: 'youtube_short_link',
+        language: 'ru',
+        duration_seconds: 45,
+        content_angle: 'Короткий видео-формат',
+        quality_score: 8,
+      }),
+      'Europe/Warsaw',
+    );
+    expect(card).toContain('Shorts-ссылка');
+    expect(card).toContain('Язык: ru');
+    expect(card).toContain('45 сек');
+    expect(card).toContain('Качество: 8/10');
+    expect(discoveryFormatLabel('youtube_short_link')).toBe('Shorts-ссылка');
   });
 });

@@ -2,70 +2,92 @@
 
 Telegram bot for moderating and publishing content to [@itsamatchchannel](https://t.me/itsamatchchannel).
 
-**v2** adds content discovery from YouTube and RSS. The bot **never auto-posts** — discovered items become `pending` candidates for manual approval via `/queue`.
+**v3** adds a Russian-first content quality layer: YouTube Shorts links, RSS article summaries, Reddit meme candidates, language filtering, and quality scoring. The bot **never auto-posts** — discovered items become `pending` candidates for manual approval via `/queue`.
 
 ## Stack
 
 - Node.js 20, TypeScript, grammY
 - SQLite (`better-sqlite3`)
-- Optional OpenAI (captions, scoring, variants)
-- Optional YouTube Data API
+- Optional OpenAI (captions, scoring, variants, Russian adaptation)
+- Optional YouTube Data API, Reddit API
 - RSS feeds (no API key required)
 - Docker Compose + long polling
+
+## YouTube links vs native Telegram video
+
+| Approach | Autoplay in channel | How |
+|----------|---------------------|-----|
+| **YouTube Shorts / video link** | No inline playback | Bot creates a `link` candidate with URL only — **videos are never downloaded** |
+| **Native Telegram video** | Yes (streaming) | Admin uploads video manually, or you use a direct MP4 URL / existing `file_id` |
+
+For autoplay-like behavior in the channel, upload the video to the bot directly or provide a legitimate direct MP4 source. YouTube, TikTok, Reels, and Instagram videos are **not** downloaded or re-uploaded.
 
 ## Quick start (English)
 
 1. Clone the repository and copy `.env.example` to `.env`.
 2. Set `CONTENT_BOT_TOKEN`, `ADMIN_TELEGRAM_IDS`, and `CHANNEL_USERNAME`.
-3. Optional: `YOUTUBE_API_KEY`, `OPENAI_API_KEY` for discovery + AI captions.
+3. Optional: `YOUTUBE_API_KEY`, `OPENAI_API_KEY`, `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`.
 4. Run `docker compose up --build` or locally: `npm ci && npm run build && npm start`.
 5. Add the bot as a channel admin, then send `/start` from an admin account.
 
-### Content discovery
+### Recommended Russian-first source strategy
 
-1. **YouTube** — set `YOUTUBE_API_KEY` in `.env`, then:
+1. **YouTube Shorts search** (links only, RU targeting):
    ```
-   /source_add youtube_channel @channelhandle My Channel
-   /source_add youtube_search dating red flags
+   /source_add youtube_short_search красные флаги в отношениях
+   /source_add youtube_short_search первое свидание
    ```
-2. **RSS** — works without YouTube key:
+2. **RSS articles** (Russian summaries with AI when enabled):
    ```
-   /source_add rss https://example.com/feed.xml Blog Name
+   /source_add rss_article https://your-feed.example/rss.xml Blog Name
    ```
-3. Run discovery manually: `/discover` (or wait for the scheduler — default every 6 hours).
-4. Review candidates: `/queue` → approve, schedule, edit caption, or use **AI-варианты**.
-5. Publish manually — nothing is posted without admin action.
+3. **Reddit memes/ideas** (official API, no scraping):
+   ```
+   /source_add reddit_subreddit relationshipmemes
+   ```
+4. Run `/source_presets` for ready-to-copy examples.
+5. Discover: `/discover` → review: `/queue` → approve manually.
 
 ## Быстрый старт (RU)
 
 1. Скопируйте `.env.example` в `.env`.
 2. Укажите `CONTENT_BOT_TOKEN`, `ADMIN_TELEGRAM_IDS`, `CHANNEL_USERNAME`.
-3. Для YouTube-источников добавьте `YOUTUBE_API_KEY`.
+3. Для YouTube Shorts: `YOUTUBE_API_KEY`. Для Reddit: `REDDIT_CLIENT_ID` и `REDDIT_CLIENT_SECRET`.
 4. Запустите: `docker compose up --build`
 5. Добавьте бота админом канала и отправьте `/start`.
 
 ### Поиск контента
 
 ```
-/source_add youtube_channel @handle Имя
-/source_add rss https://site.com/rss.xml Имя
+/source_presets
+/source_add youtube_short_search токсичные отношения
+/source_add rss_article https://site.com/rss.xml Имя
 /discover
 /queue
 ```
 
-Бот **никогда не публикует** найденный контент автоматически — только после вашего одобрения.
+Бот **никогда не публикует** найденный контент автоматически — только после вашего одобрения в `/queue`.
 
 ## Discovery commands
 
 | Command | Description |
 |---------|-------------|
 | `/sources` | List configured sources |
-| `/source_add youtube_channel …` | Add YouTube channel |
+| `/source_add youtube_channel …` | Add YouTube channel (long videos as links) |
 | `/source_add youtube_search …` | Add YouTube search query |
-| `/source_add rss …` | Add RSS feed |
+| `/source_add youtube_short_search …` | Add YouTube Shorts search (RU, short duration) |
+| `/source_add rss …` | Add RSS feed (legacy) |
+| `/source_add rss_article …` | Add RSS feed for article summaries |
+| `/source_add reddit_subreddit …` | Add Reddit subreddit (memes/ideas) |
+| `/source_presets` | Recommended source commands |
 | `/source_pause` / `/source_resume` / `/source_remove` | Manage sources |
 | `/source_check <id>` | Check one source now |
 | `/discover` | Check all enabled sources |
+| `/caption <id> <brief>` | Regenerate caption from admin note |
+
+## Queue moderation
+
+Each candidate shows format, language, duration (for video), source, quality score, and risk. Buttons include **🇷🇺 Адаптировать на русский**, **🧠 Сделать текст-пост**, and **✨ AI-варианты** (when OpenAI is enabled). Nothing publishes without **✅ Опубликовать**.
 
 ## Scripts
 
@@ -80,7 +102,9 @@ Telegram bot for moderating and publishing content to [@itsamatchchannel](https:
 
 See `.env.example`. Required: `CONTENT_BOT_TOKEN`, `ADMIN_TELEGRAM_IDS`, `CHANNEL_USERNAME`.
 
-Discovery: `YOUTUBE_API_KEY`, `DISCOVERY_ENABLED`, `DISCOVERY_INTERVAL_MINUTES`, `DISCOVERY_MAX_ITEMS_PER_SOURCE`, `DISCOVERY_LOOKBACK_HOURS`, `DISCOVERY_MIN_SCORE`, `DISCOVERY_AUTO_CREATE_CANDIDATES`.
+Discovery: `YOUTUBE_API_KEY`, `DISCOVERY_*`, `YOUTUBE_REGION_CODE`, `YOUTUBE_RELEVANCE_LANGUAGE`, `DISCOVERY_ALLOWED_LANGUAGES`, `DISCOVERY_MIN_QUALITY_SCORE`.
+
+Reddit: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_ALLOWED_SUBREDDITS`.
 
 ## Architecture
 
@@ -88,4 +112,4 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) and [REQUIREMENTS.md](./REQUIREMENTS.md
 
 ## Out of scope
 
-No Reddit scraping, Telegram channel scraping, TikTok/Reels, browser automation, video downloading, webhook, web admin, Redis, or PostgreSQL.
+No browser automation, TikTok/Reels/Instagram scraping, YouTube video downloading, webhook, web admin, Redis, PostgreSQL, or n8n. Reddit and YouTube use official APIs only.

@@ -52,7 +52,10 @@ export function registerSourceHandlers(
         'Использование:\n' +
           '/source_add youtube_channel <url|@handle|id> [имя]\n' +
           '/source_add youtube_search <запрос>\n' +
-          '/source_add rss <feed_url> [имя]',
+          '/source_add youtube_short_search <запрос>\n' +
+          '/source_add rss <feed_url> [имя]\n' +
+          '/source_add rss_article <feed_url> [имя]\n' +
+          '/source_add reddit_subreddit <subreddit> [имя]',
       );
       return;
     }
@@ -104,6 +107,25 @@ export function registerSourceHandlers(
         return;
       }
 
+      if (subType === 'youtube_short_search') {
+        const query = parts.slice(1).join(' ');
+        if (!query) {
+          await ctx.reply('Укажите поисковый запрос для YouTube Shorts.');
+          return;
+        }
+        if (!config.youtubeApiKey) {
+          await ctx.reply('❌ YouTube API недоступен: не задан YOUTUBE_API_KEY в .env.');
+          return;
+        }
+        const source = sources.create({
+          type: 'youtube_short_search',
+          name: `YouTube Shorts: ${query}`,
+          config: { query },
+        });
+        await ctx.reply(`✅ YouTube Shorts поиск добавлен. ID: ${source.id}`);
+        return;
+      }
+
       if (subType === 'rss') {
         const feedUrl = parts[1];
         if (!feedUrl) {
@@ -123,7 +145,58 @@ export function registerSourceHandlers(
         return;
       }
 
-      await ctx.reply('Неизвестный тип. Используйте: youtube_channel, youtube_search, rss');
+      if (subType === 'rss_article') {
+        const feedUrl = parts[1];
+        if (!feedUrl) {
+          await ctx.reply('Укажите URL RSS-ленты.');
+          return;
+        }
+        const name = parts.slice(2).join(' ') || `RSS статьи: ${feedUrl}`;
+        const adapter = getAdapter('rss_article');
+        const sourceConfig = { feedUrl };
+        const err = adapter.validateConfig(sourceConfig);
+        if (err) {
+          await ctx.reply(`❌ ${err}`);
+          return;
+        }
+        const source = sources.create({ type: 'rss_article', name, config: sourceConfig });
+        await ctx.reply(`✅ RSS (статьи) добавлен. ID: ${source.id}`);
+        return;
+      }
+
+      if (subType === 'reddit_subreddit') {
+        const subreddit = parts[1]?.replace(/^r\//, '');
+        if (!subreddit) {
+          await ctx.reply('Укажите subreddit, например: dating');
+          return;
+        }
+        if (!config.redditClientId || !config.redditClientSecret) {
+          await ctx.reply(
+            '❌ Reddit API не настроен.\nДобавьте REDDIT_CLIENT_ID и REDDIT_CLIENT_SECRET в .env.',
+          );
+          return;
+        }
+        if (
+          !config.redditAllowedSubreddits.some(
+            (s) => s.toLowerCase() === subreddit.toLowerCase(),
+          )
+        ) {
+          await ctx.reply(`❌ Subreddit r/${subreddit} не в списке разрешённых.`);
+          return;
+        }
+        const name = parts.slice(2).join(' ') || `Reddit: r/${subreddit}`;
+        const source = sources.create({
+          type: 'reddit_subreddit',
+          name,
+          config: { subreddit },
+        });
+        await ctx.reply(`✅ Reddit subreddit добавлен. ID: ${source.id}`);
+        return;
+      }
+
+      await ctx.reply(
+        'Неизвестный тип. Используйте: youtube_channel, youtube_search, youtube_short_search, rss, rss_article, reddit_subreddit',
+      );
     } catch (err) {
       await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -202,5 +275,33 @@ export function registerSourceHandlers(
         `Дубликатов пропущено: ${summary.duplicatesSkipped}${escapeHtml(errText)}`,
       { parse_mode: 'HTML' },
     );
+  });
+
+  bot.command('source_presets', async (ctx) => {
+    const lines = [
+      '📋 <b>Рекомендуемые источники (русский контент)</b>',
+      '',
+      '<b>YouTube Shorts поиск:</b>',
+      '/source_add youtube_short_search ошибки в отношениях',
+      '/source_add youtube_short_search красные флаги в отношениях',
+      '/source_add youtube_short_search дейтинг приложения',
+      '/source_add youtube_short_search первое свидание',
+      '/source_add youtube_short_search переписка в отношениях',
+      '/source_add youtube_short_search токсичные отношения',
+      '/source_add youtube_short_search тревожная привязанность',
+      '',
+      '<b>RSS статьи (подставьте свой feed URL):</b>',
+      '/source_add rss_article https://example.com/rss.xml Название',
+      '',
+      '<b>Reddit (нужны REDDIT_CLIENT_ID/SECRET):</b>',
+      '/source_add reddit_subreddit dating',
+      '/source_add reddit_subreddit dating_advice',
+      '/source_add reddit_subreddit Tinder',
+      '/source_add reddit_subreddit Bumble',
+      '/source_add reddit_subreddit relationshipmemes',
+      '',
+      'После добавления: /discover → /queue',
+    ];
+    await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
   });
 }

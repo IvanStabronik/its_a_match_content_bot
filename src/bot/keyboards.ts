@@ -1,6 +1,7 @@
 import { InlineKeyboard } from 'grammy';
 import type { Post } from '../types.js';
 import { truncateCaption } from '../services/content-filter.js';
+import { discoveryFormatLabel, languageLabel } from '../discovery/format-labels.js';
 import { escapeHtml } from './messages.js';
 import { formatDateTime } from '../services/schedule-parser.js';
 
@@ -17,7 +18,9 @@ export function moderationKeyboard(
     .text('📝 Изменить текст', `mod:edit:${postId}`);
 
   if (aiEnabled) {
-    kb.text('✨ AI-варианты', `mod:rewrite:${postId}`);
+    kb.text('✨ AI-варианты', `mod:rewrite:${postId}`).row();
+    kb.text('🇷🇺 Адаптировать на русский', `mod:adapt_ru:${postId}`)
+      .text('🧠 Сделать текст-пост', `mod:text_post:${postId}`);
   }
 
   kb.row().text('❌ Пропустить', `mod:skip:${postId}`).text('🗑 Удалить', `mod:delete:${postId}`);
@@ -58,7 +61,11 @@ export function formatModerationCard(
 
   const lines = [
     `📋 <b>Кандидат #${post.id}</b>`,
-    `Тип: <code>${escapeHtml(post.type)}</code>`,
+    post.discovery_format
+      ? `Формат: ${escapeHtml(discoveryFormatLabel(post.discovery_format))}`
+      : `Тип: <code>${escapeHtml(post.type)}</code>`,
+    post.language ? `Язык: ${escapeHtml(languageLabel(post.language))}` : null,
+    post.duration_seconds != null ? `Длина: ${post.duration_seconds} сек` : null,
     `Статус: <code>${escapeHtml(post.status)}</code>`,
     post.discovery_source_id && discovery?.platformLabel
       ? `Источник: ${escapeHtml(discovery.platformLabel)}`
@@ -72,6 +79,11 @@ export function formatModerationCard(
       ? `Найдено: ${formatDateTime(post.discovered_at, timezone)}`
       : null,
     post.category ? `Категория: ${escapeHtml(post.category)}` : null,
+    post.content_angle ? `Почему подходит: ${escapeHtml(post.content_angle)}` : null,
+    post.publish_recommendation
+      ? `Рекомендация: ${escapeHtml(post.publish_recommendation)}`
+      : null,
+    post.quality_score != null ? `Качество: ${post.quality_score}/10` : null,
     post.source_url ? `URL: ${escapeHtml(post.source_url)}` : null,
     `Текст: ${escapeHtml(truncateCaption(captionSource))}`,
     post.ai_score != null ? `Оценка AI: ${post.ai_score}/10` : null,

@@ -36,6 +36,7 @@ export function getCommandList(aiEnabled: boolean): string {
     '/sources — список источников контента',
     '/source_add — добавить источник (YouTube / RSS)',
     '/discover — проверить все активные источники',
+    '/source_presets — рекомендуемые источники для RU контента',
   ];
 
   if (aiEnabled) {

@@ -54,6 +54,13 @@ export interface Post {
   source_author: string | null;
   thumbnail_url: string | null;
   discovered_at: string | null;
+  discovery_format: DiscoveryFormat | null;
+  language: ContentLanguage | null;
+  duration_seconds: number | null;
+  quality_score: number | null;
+  content_angle: string | null;
+  publish_recommendation: string | null;
+  shorts_url: string | null;
 }
 
 export interface CreatePostInput {
@@ -79,9 +86,43 @@ export interface CreatePostInput {
   risk_score?: number | null;
   risk_reason?: string | null;
   warnings?: string | null;
+  discovery_format?: DiscoveryFormat | null;
+  language?: ContentLanguage | null;
+  duration_seconds?: number | null;
+  quality_score?: number | null;
+  content_angle?: string | null;
+  publish_recommendation?: string | null;
+  shorts_url?: string | null;
 }
 
-export type SourceType = 'youtube_channel' | 'youtube_search' | 'rss' | 'reddit';
+export type DiscoveryFormat =
+  | 'youtube_short_link'
+  | 'youtube_video_link'
+  | 'article_summary'
+  | 'meme_image'
+  | 'text_idea'
+  | 'native_video';
+
+export type ContentLanguage = 'ru' | 'en' | 'unknown';
+
+export type SkipReason =
+  | 'duplicate'
+  | 'foreign_language'
+  | 'low_quality'
+  | 'too_long'
+  | 'unsafe'
+  | 'missing_media'
+  | 'api_error'
+  | 'low_score';
+
+export type SourceType =
+  | 'youtube_channel'
+  | 'youtube_search'
+  | 'youtube_short_search'
+  | 'rss'
+  | 'rss_article'
+  | 'reddit'
+  | 'reddit_subreddit';
 
 export interface Source {
   id: number;
@@ -110,6 +151,13 @@ export interface SourceItem {
   raw_json: string | null;
   candidate_post_id: number | null;
   created_at: string;
+  skip_reason: SkipReason | null;
+  discovery_format: DiscoveryFormat | null;
+  language: ContentLanguage | null;
+  duration_seconds: number | null;
+  quality_score: number | null;
+  shorts_url: string | null;
+  image_url: string | null;
 }
 
 export interface CreateSourceInput {
@@ -150,7 +198,8 @@ export type SessionState =
   | { type: 'idle' }
   | { type: 'schedule'; postId: number }
   | { type: 'edit_caption'; postId: number }
-  | { type: 'rewrite_select'; postId: number; variants: string[] };
+  | { type: 'rewrite_select'; postId: number; variants: string[] }
+  | { type: 'media_note'; postId: number };
 
 export class InvalidTransitionError extends Error {
   constructor(from: PostStatus, to: PostStatus) {

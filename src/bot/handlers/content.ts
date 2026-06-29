@@ -18,6 +18,7 @@ import {
 } from '../../services/schedule-parser.js';
 import type { CreatePostInput, PostType } from '../../types.js';
 import { InvalidTransitionError } from '../../types.js';
+import { assessLanguage, itemTextForLanguage } from '../../discovery/language.js';
 import {
   candidateCreated,
   invalidUrlError,
@@ -26,7 +27,7 @@ import {
   SUPPORTED_TYPES_MESSAGE,
   textTooLongError,
 } from '../messages.js';
-import { clearSession, getSession } from '../session.js';
+import { clearSession, getSession, setSession } from '../session.js';
 
 export function registerContentHandlers(
   bot: Bot,
@@ -46,6 +47,11 @@ export function registerContentHandlers(
 
     if (session.type === 'edit_caption') {
       await handleEditCaptionInput(ctx, posts, session.postId);
+      return;
+    }
+
+    if (session.type === 'media_note') {
+      await handleMediaNoteInput(ctx, posts, ai, session.postId);
       return;
     }
 
@@ -116,6 +122,47 @@ async function handleEditCaptionInput(
   posts.update(postId, { caption: text });
   clearSession(ctx.from!.id);
   await ctx.reply(`✅ Текст обновлён для кандидата #${postId}`);
+}
+
+async function handleMediaNoteInput(
+  ctx: Context,
+  posts: PostRepository,
+  ai: AiModule | null,
+  postId: number,
+): Promise<void> {
+  const text = ctx.message?.text?.trim() ?? '';
+  clearSession(ctx.from!.id);
+
+  if (text.toLowerCase() === 'пропустить' || text === '-') {
+    await ctx.reply(`✅ Описание пропущено для #${postId}`);
+    return;
+  }
+
+  if (text.length > 500) {
+    await ctx.reply('❌ Описание не длиннее 500 символов.');
+    return;
+  }
+
+  const post = posts.getById(postId);
+  if (!post) {
+    await ctx.reply('Кандидат не найден.');
+    return;
+  }
+
+  let caption = post.caption ?? '';
+  if (ai && text) {
+    try {
+      const variants = await ai.rewriteCaption(`${text}\n\n${caption}`.trim());
+      caption = variants[0] ?? text;
+    } catch {
+      caption = text;
+    }
+  } else {
+    caption = text || caption;
+  }
+
+  posts.update(postId, { caption, raw_text: caption });
+  await ctx.reply(`✅ Текст обновлён для #${postId}`);
 }
 
 async function handleIncomingContent(
@@ -198,7 +245,21 @@ async function handleIncomingContent(
 
     if (!input) return;
 
+    if (input.type === 'video') {
+      input.discovery_format = 'native_video';
+      input.quality_score = 8;
+      input.content_angle = 'Нативное видео от админа';
+      input.publish_recommendation = 'Готово к модерации';
+    }
+    if (input.type === 'photo' || input.type === 'animation') {
+      input.discovery_format = input.type === 'photo' ? 'meme_image' : 'native_video';
+      input.quality_score = 7;
+    }
+
     const textForEval = input.caption || input.raw_text || input.source_url || '';
+    const lang = assessLanguage(itemTextForLanguage({ title: textForEval, description: null }));
+    input.language = lang.language;
+
     const forbiddenWarnings = checkForbiddenContent(textForEval);
     const warnings = mergeWarnings(null, forbiddenWarnings);
 
@@ -212,6 +273,17 @@ async function handleIncomingContent(
 
     const pendingCount = posts.countPending();
     await ctx.reply(candidateCreated(post.id, pendingCount));
+
+    if (
+      (input.type === 'video' || input.type === 'photo' || input.type === 'animation') &&
+      !input.caption
+    ) {
+      setSession(ctx.from!.id, { type: 'media_note', postId: post.id });
+      await ctx.reply(
+        'Добавьте короткое описание, что это за видео/мем, или отправьте «Пропустить».',
+      );
+    }
+
     logger.info('content', 'Candidate created', { postId: post.id, type: input.type });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -122,6 +122,58 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 3,
+    name: 'content_quality_layer',
+    up(db) {
+      const postCols: Array<[string, string]> = [
+        ['discovery_format', 'TEXT'],
+        ['language', 'TEXT'],
+        ['duration_seconds', 'INTEGER'],
+        ['quality_score', 'REAL'],
+        ['content_angle', 'TEXT'],
+        ['publish_recommendation', 'TEXT'],
+        ['shorts_url', 'TEXT'],
+      ];
+      if (tableExists(db, 'posts')) {
+        for (const [col, def] of postCols) addColumnIfMissing(db, 'posts', col, def);
+      }
+
+      const itemCols: Array<[string, string]> = [
+        ['skip_reason', 'TEXT'],
+        ['discovery_format', 'TEXT'],
+        ['language', 'TEXT'],
+        ['duration_seconds', 'INTEGER'],
+        ['quality_score', 'REAL'],
+        ['shorts_url', 'TEXT'],
+        ['image_url', 'TEXT'],
+      ];
+      if (tableExists(db, 'source_items')) {
+        for (const [col, def] of itemCols) addColumnIfMissing(db, 'source_items', col, def);
+      }
+
+      if (tableExists(db, 'sources')) {
+        db.exec(`
+          CREATE TABLE sources_v3 (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            type            TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            config_json     TEXT NOT NULL,
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            last_checked_at TEXT,
+            last_success_at TEXT,
+            last_error      TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL
+          );
+          INSERT INTO sources_v3 SELECT * FROM sources;
+          DROP TABLE sources;
+          ALTER TABLE sources_v3 RENAME TO sources;
+          CREATE INDEX IF NOT EXISTS idx_sources_enabled ON sources(enabled);
+        `);
+      }
+    },
+  },
 ];
 
 export function runMigrations(db: Db): void {

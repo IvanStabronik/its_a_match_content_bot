@@ -108,6 +108,8 @@ export function registerCallbackHandlers(
                 publishedAt: item.published_at,
                 thumbnailUrl: item.thumbnail_url,
                 raw: item.raw_json ? JSON.parse(item.raw_json) : null,
+                discoveryFormat: post.discovery_format ?? item.discovery_format ?? 'text_idea',
+                durationSeconds: post.duration_seconds ?? item.duration_seconds,
               },
               caption,
               config.channelUsername,
@@ -130,6 +132,46 @@ export function registerCallbackHandlers(
         const msg = err instanceof Error ? err.message : String(err);
         logger.error('moderation', 'Rewrite failed', { postId, error: msg });
         await ctx.reply(`❌ ${msg}`);
+      }
+    });
+
+    bot.callbackQuery(/^mod:adapt_ru:(\d+)$/, async (ctx) => {
+      const postId = Number(ctx.match[1]);
+      const post = posts.getById(postId);
+      if (!post) {
+        await ctx.answerCallbackQuery({ text: 'Кандидат не найден' });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: 'Адаптация…' });
+      try {
+        const caption = await ai.adaptToRussian(post, config.channelUsername);
+        posts.update(postId, { caption, raw_text: caption, language: 'ru' });
+        await ctx.reply(`✅ Текст адаптирован на русский для #${postId}`);
+      } catch (err) {
+        await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+      }
+    });
+
+    bot.callbackQuery(/^mod:text_post:(\d+)$/, async (ctx) => {
+      const postId = Number(ctx.match[1]);
+      const post = posts.getById(postId);
+      if (!post) {
+        await ctx.answerCallbackQuery({ text: 'Кандидат не найден' });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: 'Конвертация…' });
+      try {
+        const caption = await ai.convertToTextPost(post, config.channelUsername);
+        posts.update(postId, {
+          type: 'text',
+          caption,
+          raw_text: caption,
+          discovery_format: 'text_idea',
+          language: 'ru',
+        });
+        await ctx.reply(`✅ Кандидат #${postId} преобразован в текст-пост`);
+      } catch (err) {
+        await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
       }
     });
   }

@@ -1,6 +1,35 @@
 import type { Db } from '../db/connection.js';
-import type { CreateSourceInput, Post, Source, SourceItem, SourceType } from '../types.js';
+import type {
+  CreateSourceInput,
+  DiscoveryFormat,
+  ContentLanguage,
+  Post,
+  SkipReason,
+  Source,
+  SourceItem,
+  SourceType,
+} from '../types.js';
 import type { PostRepository } from './posts.js';
+
+export interface SourceItemInput {
+  sourceId: number;
+  platform: string;
+  externalId: string;
+  url: string;
+  title?: string | null;
+  description?: string | null;
+  author?: string | null;
+  publishedAt?: string | null;
+  thumbnailUrl?: string | null;
+  raw?: unknown;
+  skipReason?: SkipReason | null;
+  discoveryFormat?: DiscoveryFormat | null;
+  language?: ContentLanguage | null;
+  durationSeconds?: number | null;
+  qualityScore?: number | null;
+  shortsUrl?: string | null;
+  imageUrl?: string | null;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -109,27 +138,20 @@ export class SourceItemRepository {
     return row ? rowToSourceItem(row as Record<string, unknown>) : null;
   }
 
-  create(input: {
-    sourceId: number;
-    platform: string;
-    externalId: string;
-    url: string;
-    title?: string | null;
-    description?: string | null;
-    author?: string | null;
-    publishedAt?: string | null;
-    thumbnailUrl?: string | null;
-    raw?: unknown;
-  }): SourceItem {
+  create(input: SourceItemInput): SourceItem {
     const ts = nowIso();
     const result = this.db
       .prepare(
         `INSERT INTO source_items (
           source_id, platform, external_id, url, title, description, author,
-          published_at, thumbnail_url, raw_json, created_at
+          published_at, thumbnail_url, raw_json, created_at,
+          skip_reason, discovery_format, language, duration_seconds,
+          quality_score, shorts_url, image_url
         ) VALUES (
           @source_id, @platform, @external_id, @url, @title, @description, @author,
-          @published_at, @thumbnail_url, @raw_json, @created_at
+          @published_at, @thumbnail_url, @raw_json, @created_at,
+          @skip_reason, @discovery_format, @language, @duration_seconds,
+          @quality_score, @shorts_url, @image_url
         )`,
       )
       .run({
@@ -144,6 +166,13 @@ export class SourceItemRepository {
         thumbnail_url: input.thumbnailUrl ?? null,
         raw_json: input.raw ? JSON.stringify(input.raw) : null,
         created_at: ts,
+        skip_reason: input.skipReason ?? null,
+        discovery_format: input.discoveryFormat ?? null,
+        language: input.language ?? null,
+        duration_seconds: input.durationSeconds ?? null,
+        quality_score: input.qualityScore ?? null,
+        shorts_url: input.shortsUrl ?? null,
+        image_url: input.imageUrl ?? null,
       });
     return this.getById(Number(result.lastInsertRowid))!;
   }
@@ -159,37 +188,15 @@ export class SourceItemRepository {
       .run(postId, itemId);
   }
 
-  createSkippedItem(input: {
-    sourceId: number;
-    platform: string;
-    externalId: string;
-    url: string;
-    title?: string | null;
-    description?: string | null;
-    author?: string | null;
-    publishedAt?: string | null;
-    thumbnailUrl?: string | null;
-    raw?: unknown;
-  }): SourceItem {
-    return this.create(input);
+  createSkippedItem(input: SourceItemInput): SourceItem {
+    return this.create({ ...input, skipReason: input.skipReason ?? 'low_quality' });
   }
 
   createCandidateWithPost(
     posts: PostRepository,
-    itemInput: {
-      sourceId: number;
-      platform: string;
-      externalId: string;
-      url: string;
-      title?: string | null;
-      description?: string | null;
-      author?: string | null;
-      publishedAt?: string | null;
-      thumbnailUrl?: string | null;
-      raw?: unknown;
-    },
+    itemInput: SourceItemInput,
     buildPostInput: (sourceItemId: number) => import('../types.js').CreatePostInput,
-  ): { sourceItem: SourceItem; post: import('../types.js').Post } {
+  ): { sourceItem: SourceItem; post: Post } {
     const txn = this.db.transaction(() => {
       const sourceItem = this.create(itemInput);
       const post = posts.create(buildPostInput(sourceItem.id));
@@ -206,10 +213,16 @@ export function sourceTypeLabel(type: SourceType): string {
       return 'YouTube канал';
     case 'youtube_search':
       return 'YouTube поиск';
+    case 'youtube_short_search':
+      return 'YouTube Shorts поиск';
     case 'rss':
       return 'RSS';
+    case 'rss_article':
+      return 'RSS статьи';
     case 'reddit':
       return 'Reddit';
+    case 'reddit_subreddit':
+      return 'Reddit subreddit';
     default:
       return type;
   }

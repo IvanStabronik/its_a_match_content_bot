@@ -140,6 +140,35 @@ export function registerCommandHandlers(
     }
   });
 
+  bot.command('caption', async (ctx) => {
+    const raw = ctx.message?.text?.replace(/^\/caption\s*/, '').trim() ?? '';
+    const match = raw.match(/^(\d+)\s+([\s\S]+)/);
+    if (!match) {
+      await ctx.reply('Использование: /caption <id> <краткое описание>');
+      return;
+    }
+    const postId = Number(match[1]);
+    const note = match[2].trim();
+    const post = posts.getById(postId);
+    if (!post) {
+      await ctx.reply('Кандидат не найден.');
+      return;
+    }
+    let caption = note;
+    if (ai) {
+      try {
+        const variants = await ai.rewriteCaption(
+          `${note}\n\n${post.caption ?? post.raw_text ?? ''}`.trim(),
+        );
+        caption = variants[0] ?? note;
+      } catch {
+        // use note as-is
+      }
+    }
+    posts.update(postId, { caption, raw_text: caption });
+    await ctx.reply(`✅ Текст обновлён для #${postId}`);
+  });
+
   bot.command('backup', async (ctx) => {
     try {
       const result = createBackup(db, config.backupDir);

@@ -73,11 +73,16 @@ export async function sendByType(
       return msg.message_id;
     }
     case 'photo': {
-      const msg = await api.sendPhoto(chatId, post.media_file_id!, { caption });
+      const photo = post.media_file_id ?? post.media_url;
+      if (!photo) throw new Error('Photo post missing media');
+      const msg = await api.sendPhoto(chatId, photo, { caption });
       return msg.message_id;
     }
     case 'video': {
-      const msg = await api.sendVideo(chatId, post.media_file_id!, { caption });
+      const msg = await api.sendVideo(chatId, post.media_file_id!, {
+        caption,
+        supports_streaming: true,
+      });
       return msg.message_id;
     }
     case 'animation': {

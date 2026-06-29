@@ -1,20 +1,21 @@
 import type { AiModule } from '../ai/module.js';
 import type { AppConfig } from '../config.js';
 import { logger } from '../logger.js';
-import { checkForbiddenContent, mergeWarnings } from '../services/content-filter.js';
+import { checkForbiddenContent } from '../services/content-filter.js';
 import type { PostRepository } from '../services/posts.js';
 import type { SourceItemRepository, SourceRepository } from '../services/sources.js';
-import type { Source } from '../types.js';
-import { resolveChannelId } from './adapters/youtube.js';
+import type { SkipReason, Source } from '../types.js';
 import { getAdapter } from './adapters/index.js';
-import type { DiscoveredItem, DiscoveryRunResult, DiscoverySummary } from './types.js';
+import { resolveChannelId } from './adapters/youtube.js';
+import {
+  buildCaptionForItem,
+  buildPostFromItem,
+  evaluateDiscoveredItem,
+  toSourceItemInput,
+} from './pipeline.js';
+import type { DiscoveryRunResult, DiscoverySummary } from './types.js';
 
-export function buildTemplateCaption(item: DiscoveredItem): string {
-  const title = item.title?.trim() || 'Интересный материал';
-  return `Нашёл материал по теме отношений и общения.\n\n${title}\n\nЧто думаете?`;
-}
-
-export type CreateCandidateResult = 'created' | 'duplicate' | 'skipped_low_score';
+export type CreateCandidateResult = 'created' | 'skipped' | 'duplicate';
 
 export class DiscoveryService {
   constructor(
@@ -112,11 +113,7 @@ export class DiscoveryService {
       await this.persistYouTubeChannelId(source);
 
       const refreshedSource = this.sources.getById(source.id) ?? source;
-      const items = await adapter.fetchRecentItems(
-        refreshedSource,
-        limits,
-        this.config.youtubeApiKey,
-      );
+      const items = await adapter.fetchRecentItems(refreshedSource, limits, this.config);
       result.found = items.length;
 
       if (!this.config.discoveryAutoCreateCandidates) {
@@ -133,11 +130,8 @@ export class DiscoveryService {
           continue;
         }
 
-        const textForFilter = [item.title, item.description].filter(Boolean).join('\n');
-        const keywordWarnings = checkForbiddenContent(textForFilter);
-
         try {
-          const outcome = await this.createCandidate(source, item, keywordWarnings);
+          const outcome = await this.createCandidate(source, item);
           if (outcome === 'created') {
             result.newCandidates++;
           } else {
@@ -160,96 +154,69 @@ export class DiscoveryService {
     return result;
   }
 
-  private async createCandidate(
-    source: Source,
-    item: DiscoveredItem,
-    keywordWarnings: import('../types.js').Warning[],
-  ): Promise<CreateCandidateResult> {
+  private async createCandidate(source: Source, item: import('./types.js').DiscoveredItem): Promise<CreateCandidateResult> {
     const existing = this.sourceItems.findByPlatformExternalId(item.platform, item.externalId);
     if (existing) return 'duplicate';
 
-    let caption = buildTemplateCaption(item);
-    let category: import('../types.js').PostCategory | null = null;
-    let aiScore: number | null = null;
-    let riskScore: number | null = null;
-    let riskReason: string | null = null;
-    let warnings = keywordWarnings.length > 0 ? JSON.stringify(keywordWarnings) : null;
-
-    if (this.ai) {
-      try {
-        const generated = await this.ai.generateDiscoveryCaption(item, this.config.channelUsername);
-        caption = generated.caption;
-        category = generated.category;
-        aiScore = generated.aiScore;
-        riskScore = generated.riskScore;
-        riskReason = generated.riskReason;
-
-        if (this.config.discoveryMinScore > 0 && aiScore < this.config.discoveryMinScore) {
-          this.sourceItems.createSkippedItem({
-            sourceId: source.id,
-            platform: item.platform,
-            externalId: item.externalId,
-            url: item.url,
-            title: item.title,
-            description: item.description,
-            author: item.author,
-            publishedAt: item.publishedAt,
-            thumbnailUrl: item.thumbnailUrl,
-            raw: item.raw,
-          });
-          return 'skipped_low_score';
-        }
-
-        if (generated.warnings.length > 0) {
-          warnings = mergeWarnings(warnings, generated.warnings);
-        }
-        if (riskScore > 7) {
-          warnings = mergeWarnings(
-            warnings,
-            [{ type: 'risk_score', message: `Высокий риск (${riskScore}/10): ${riskReason}`, risk_score: riskScore }],
-          );
-        }
-      } catch (err) {
-        logger.warn('discovery', 'AI caption fallback to template', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+    const evaluation = await evaluateDiscoveredItem(item, this.config, this.ai);
+    if (!evaluation.accept) {
+      this.sourceItems.createSkippedItem(
+        toSourceItemInput(source.id, item, {
+          skipReason: evaluation.skipReason as SkipReason,
+          qualityScore: evaluation.quality.qualityScore,
+          language: evaluation.language.language,
+        }),
+      );
+      return 'skipped';
     }
 
-    const now = new Date().toISOString();
-    const itemInput = {
-      sourceId: source.id,
-      platform: item.platform,
-      externalId: item.externalId,
-      url: item.url,
-      title: item.title,
-      description: item.description,
-      author: item.author,
-      publishedAt: item.publishedAt,
-      thumbnailUrl: item.thumbnailUrl,
-      raw: item.raw,
-    };
+    const keywordWarnings = checkForbiddenContent(
+      [item.title, item.description].filter(Boolean).join('\n'),
+    );
 
-    this.sourceItems.createCandidateWithPost(this.posts, itemInput, (sourceItemId) => ({
-      type: 'link',
-      status: 'pending',
-      source_url: item.url,
-      caption,
-      raw_text: caption,
-      category,
-      ai_score: aiScore,
-      risk_score: riskScore,
-      risk_reason: riskReason,
-      warnings,
-      discovery_source_id: source.id,
-      discovery_item_id: sourceItemId,
-      source_title: item.title,
-      source_author: item.author,
-      thumbnail_url: item.thumbnailUrl,
-      discovered_at: now,
-      created_by: 'discovery',
-    }));
+    const captionData = await buildCaptionForItem(this.ai, item, this.config.channelUsername);
+
+    if (
+      this.config.discoveryMinScore > 0 &&
+      captionData.aiScore != null &&
+      captionData.aiScore < this.config.discoveryMinScore
+    ) {
+      this.sourceItems.createSkippedItem(
+        toSourceItemInput(source.id, item, {
+          skipReason: 'low_score',
+          qualityScore: captionData.aiScore,
+          language: item.language ?? null,
+        }),
+      );
+      return 'skipped';
+    }
+
+    if (
+      captionData.qualityScore != null &&
+      captionData.qualityScore < this.config.discoveryMinQualityScore &&
+      !this.config.discoveryCreateLowScore
+    ) {
+      this.sourceItems.createSkippedItem(
+        toSourceItemInput(source.id, item, {
+          skipReason: 'low_quality',
+          qualityScore: captionData.qualityScore,
+          language: item.language ?? null,
+        }),
+      );
+      return 'skipped';
+    }
+
+    const itemInput = toSourceItemInput(source.id, item, {
+      language: item.language ?? null,
+      qualityScore: item.qualityScore ?? captionData.qualityScore,
+    });
+
+    this.sourceItems.createCandidateWithPost(this.posts, itemInput, (sourceItemId) =>
+      buildPostFromItem(source, item, sourceItemId, captionData, keywordWarnings),
+    );
 
     return 'created';
   }
 }
+
+export { buildTemplateCaption } from './pipeline.js';

@@ -44,13 +44,17 @@ export class PostRepository {
         caption, raw_text, created_by, created_at, updated_at,
         poll_question, poll_options_json, scheduled_at,
         discovery_source_id, discovery_item_id, source_title, source_author,
-        thumbnail_url, discovered_at, ai_score, risk_score, risk_reason, warnings
+        thumbnail_url, discovered_at, ai_score, risk_score, risk_reason, warnings,
+        discovery_format, language, duration_seconds, quality_score,
+        content_angle, publish_recommendation, shorts_url
       ) VALUES (
         @type, @status, @category, @source_url, @media_file_id, @media_url,
         @caption, @raw_text, @created_by, @created_at, @updated_at,
         @poll_question, @poll_options_json, @scheduled_at,
         @discovery_source_id, @discovery_item_id, @source_title, @source_author,
-        @thumbnail_url, @discovered_at, @ai_score, @risk_score, @risk_reason, @warnings
+        @thumbnail_url, @discovered_at, @ai_score, @risk_score, @risk_reason, @warnings,
+        @discovery_format, @language, @duration_seconds, @quality_score,
+        @content_angle, @publish_recommendation, @shorts_url
       )
     `);
     const result = stmt.run({
@@ -78,6 +82,13 @@ export class PostRepository {
       risk_score: input.risk_score ?? null,
       risk_reason: input.risk_reason ?? null,
       warnings: input.warnings ?? null,
+      discovery_format: input.discovery_format ?? null,
+      language: input.language ?? null,
+      duration_seconds: input.duration_seconds ?? null,
+      quality_score: input.quality_score ?? null,
+      content_angle: input.content_angle ?? null,
+      publish_recommendation: input.publish_recommendation ?? null,
+      shorts_url: input.shorts_url ?? null,
     });
     return this.getById(Number(result.lastInsertRowid))!;
   }
@@ -89,10 +100,11 @@ export class PostRepository {
 
   update(id: number, fields: Partial<Post>): Post | null {
     const allowed = [
-      'status', 'category', 'caption', 'raw_text', 'ai_score', 'risk_score',
+      'type', 'status', 'category', 'caption', 'raw_text', 'ai_score', 'risk_score',
       'risk_reason', 'warnings', 'scheduled_at', 'posted_at', 'telegram_message_id',
       'deleted_at', 'poll_question', 'poll_options_json', 'media_file_id', 'source_url',
-      'last_error', 'publishing_started_at',
+      'last_error', 'publishing_started_at', 'media_url', 'discovery_format', 'language',
+      'duration_seconds', 'quality_score', 'content_angle', 'publish_recommendation', 'shorts_url',
     ] as const;
 
     const current = this.getById(id);

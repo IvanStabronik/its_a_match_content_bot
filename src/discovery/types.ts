@@ -1,4 +1,5 @@
-import type { Source, SourceType } from '../types.js';
+import type { AppConfig } from '../config.js';
+import type { DiscoveryFormat, Source } from '../types.js';
 
 export interface DiscoveredItem {
   platform: string;
@@ -10,6 +11,14 @@ export interface DiscoveredItem {
   publishedAt: string | null;
   thumbnailUrl: string | null;
   raw: unknown;
+  discoveryFormat: DiscoveryFormat;
+  language?: import('../types.js').ContentLanguage | null;
+  durationSeconds?: number | null;
+  shortsUrl?: string | null;
+  imageUrl?: string | null;
+  qualityScore?: number | null;
+  contentAngle?: string | null;
+  publishRecommendation?: string | null;
 }
 
 export interface DiscoveryLimits {
@@ -18,12 +27,12 @@ export interface DiscoveryLimits {
 }
 
 export interface SourceAdapter {
-  readonly type: SourceType;
+  readonly type: Source['type'];
   validateConfig(config: Record<string, unknown>): string | null;
   fetchRecentItems(
     source: Source,
     limits: DiscoveryLimits,
-    apiKey: string | null,
+    config: AppConfig,
   ): Promise<DiscoveredItem[]>;
 }
 

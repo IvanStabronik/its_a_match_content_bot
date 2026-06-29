@@ -16,6 +16,19 @@ export interface AppConfig {
   discoveryLookbackHours: number;
   discoveryMinScore: number;
   discoveryAutoCreateCandidates: boolean;
+  youtubeRegionCode: string;
+  youtubeRelevanceLanguage: string;
+  youtubeShortsMaxSeconds: number;
+  youtubeRejectOverSeconds: number;
+  discoveryAllowedLanguages: string[];
+  discoveryRejectForeignLanguage: boolean;
+  discoveryMinQualityScore: number;
+  discoveryCreateLowScore: boolean;
+  redditClientId: string | null;
+  redditClientSecret: string | null;
+  redditUserAgent: string;
+  redditMaxPostsPerSource: number;
+  redditAllowedSubreddits: string[];
 }
 
 function requireEnv(name: string): string {
@@ -90,7 +103,28 @@ export function loadConfig(): AppConfig {
     discoveryLookbackHours: parsePositiveInt(process.env.DISCOVERY_LOOKBACK_HOURS, 168),
     discoveryMinScore: parseNonNegativeInt(process.env.DISCOVERY_MIN_SCORE, 0),
     discoveryAutoCreateCandidates: parseBool(process.env.DISCOVERY_AUTO_CREATE_CANDIDATES, true),
+    youtubeRegionCode: process.env.YOUTUBE_REGION_CODE?.trim() || 'RU',
+    youtubeRelevanceLanguage: process.env.YOUTUBE_RELEVANCE_LANGUAGE?.trim() || 'ru',
+    youtubeShortsMaxSeconds: parsePositiveInt(process.env.YOUTUBE_SHORTS_MAX_SECONDS, 90),
+    youtubeRejectOverSeconds: parsePositiveInt(process.env.YOUTUBE_REJECT_OVER_SECONDS, 180),
+    discoveryAllowedLanguages: parseCsv(process.env.DISCOVERY_ALLOWED_LANGUAGES, ['ru']),
+    discoveryRejectForeignLanguage: parseBool(process.env.DISCOVERY_REJECT_FOREIGN_LANGUAGE, true),
+    discoveryMinQualityScore: parseNonNegativeInt(process.env.DISCOVERY_MIN_QUALITY_SCORE, 6),
+    discoveryCreateLowScore: parseBool(process.env.DISCOVERY_CREATE_LOW_SCORE, false),
+    redditClientId: optionalEnv('REDDIT_CLIENT_ID'),
+    redditClientSecret: optionalEnv('REDDIT_CLIENT_SECRET'),
+    redditUserAgent: process.env.REDDIT_USER_AGENT?.trim() || 'ItsAMatchContentBot/3.0',
+    redditMaxPostsPerSource: parsePositiveInt(process.env.REDDIT_MAX_POSTS_PER_SOURCE, 5),
+    redditAllowedSubreddits: parseCsv(
+      process.env.REDDIT_ALLOWED_SUBREDDITS,
+      ['dating', 'dating_advice', 'relationships', 'relationship_advice', 'Tinder', 'Bumble', 'OnlineDating', 'relationshipmemes'],
+    ),
   };
+}
+
+function parseCsv(raw: string | undefined, defaultValue: string[]): string[] {
+  if (!raw?.trim()) return defaultValue;
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 export function isAdmin(userId: number, adminIds: number[]): boolean {

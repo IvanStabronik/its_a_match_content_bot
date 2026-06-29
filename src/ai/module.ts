@@ -303,6 +303,150 @@ export class AiModule {
     if (variants.length === 0) throw new Error('AI не вернул варианты');
     return variants;
   }
+
+  async generateArticleSummary(
+    item: import('../discovery/types.js').DiscoveredItem,
+    channelUsername: string,
+  ): Promise<{
+    caption: string;
+    category: PostCategory;
+    aiScore: number;
+    riskScore: number;
+    riskReason: string;
+    qualityScore: number;
+    warnings: import('../types.js').Warning[];
+  }> {
+    const metadata = [
+      item.title ? `Заголовок: ${item.title}` : null,
+      item.description ? `Текст: ${item.description}` : null,
+      item.url ? `Источник: ${item.url}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Ты редактор русскоязычного Telegram-канала @${channelUsername} про отношения. ` +
+                'Сделай русский пост-резюме статьи: hook, 2–4 предложения пользы, мягкий вопрос для обсуждения. ' +
+                'Не выдумывай факты. Ссылку в текст не вставляй. ' +
+                'JSON: {"caption":"...","category":"slug","ai_score":число,"quality_score":число,"risk_score":число,"risk_reason":"..."}',
+            },
+            { role: 'user', content: metadata },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.65,
+        }),
+      'article_summary',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
+      caption?: string;
+      category?: string;
+      ai_score?: number;
+      quality_score?: number;
+      risk_score?: number;
+      risk_reason?: string;
+    };
+
+    const caption = (parsed.caption ?? '').trim().slice(0, 900);
+    const categorySlug = parsed.category ?? 'news';
+    const category = (PREDEFINED_CATEGORIES as readonly string[]).includes(categorySlug)
+      ? (categorySlug as PostCategory)
+      : 'news';
+
+    return {
+      caption: caption.length >= 40 ? caption : buildFallbackArticle(item.title),
+      category,
+      aiScore: Math.min(10, Math.max(1, Math.round(parsed.ai_score ?? 6))),
+      qualityScore: Math.min(10, Math.max(1, Math.round(parsed.quality_score ?? parsed.ai_score ?? 6))),
+      riskScore: Math.min(10, Math.max(1, Math.round(parsed.risk_score ?? 2))),
+      riskReason: parsed.risk_reason ?? 'Без объяснения',
+      warnings: [],
+    };
+  }
+
+  async adaptToRussian(
+    post: import('../types.js').Post,
+    channelUsername: string,
+  ): Promise<string> {
+    const context = [
+      post.source_title ? `Заголовок: ${post.source_title}` : null,
+      post.caption ? `Текущий текст: ${post.caption}` : null,
+      post.source_url ? `Источник: ${post.source_url}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Адаптируй контент для @${channelUsername} на русский Telegram-стиль: лёгко, умно, про отношения. ` +
+                'JSON: {"caption":"..."}',
+            },
+            { role: 'user', content: context || 'Без контекста' },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.75,
+        }),
+      'adapt_ru',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
+    return (parsed.caption ?? post.caption ?? '').slice(0, 1024);
+  }
+
+  async convertToTextPost(
+    post: import('../types.js').Post,
+    channelUsername: string,
+  ): Promise<string> {
+    const context = [
+      post.discovery_format ? `Формат: ${post.discovery_format}` : null,
+      post.source_title ? `Заголовок: ${post.source_title}` : null,
+      post.caption ? `Текущий текст: ${post.caption}` : null,
+      post.source_url ? `Источник (только метаданные): ${post.source_url}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const response = await this.call(
+      () =>
+        this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                `Сделай самостоятельный русский текст-пост для @${channelUsername} на основе идеи. ` +
+                'Не притворяйся, что видел видео/мем. Можно упомянуть, что материал навёл на мысль. ' +
+                'JSON: {"caption":"..."}',
+            },
+            { role: 'user', content: context },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.8,
+        }),
+      'text_post',
+    );
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as { caption?: string };
+    return (parsed.caption ?? post.caption ?? '').slice(0, 4096);
+  }
+}
+
+function buildFallbackArticle(title: string | null | undefined): string {
+  const t = title?.trim() || 'Интересная статья';
+  return `📰 ${t}\n\nКоротко: материал про отношения и общение.\n\nЧто думаете?`;
 }
 
 export function createAiModule(

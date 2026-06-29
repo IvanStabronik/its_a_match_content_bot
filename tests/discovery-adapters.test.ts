@@ -1,7 +1,41 @@
 import { describe, expect, it } from 'vitest';
+import type { AppConfig } from '../src/config.js';
 import { getAdapter } from '../src/discovery/adapters/index.js';
 import { mapRssItem, parseRssDate } from '../src/discovery/adapters/rss.js';
 import { youtubeChannelAdapter } from '../src/discovery/adapters/youtube.js';
+
+function makeConfig(): AppConfig {
+  return {
+    contentBotToken: 't',
+    adminTelegramIds: [1],
+    channelUsername: 'ch',
+    openaiApiKey: null,
+    mainBotUsername: null,
+    databasePath: ':memory:',
+    backupDir: '/tmp',
+    timezone: 'Europe/Warsaw',
+    youtubeApiKey: 'key',
+    discoveryEnabled: true,
+    discoveryIntervalMinutes: 360,
+    discoveryMaxItemsPerSource: 5,
+    discoveryLookbackHours: 168,
+    discoveryMinScore: 0,
+    discoveryAutoCreateCandidates: true,
+    youtubeRegionCode: 'RU',
+    youtubeRelevanceLanguage: 'ru',
+    youtubeShortsMaxSeconds: 90,
+    youtubeRejectOverSeconds: 180,
+    discoveryAllowedLanguages: ['ru'],
+    discoveryRejectForeignLanguage: true,
+    discoveryMinQualityScore: 6,
+    discoveryCreateLowScore: false,
+    redditClientId: null,
+    redditClientSecret: null,
+    redditUserAgent: 'test',
+    redditMaxPostsPerSource: 5,
+    redditAllowedSubreddits: ['dating'],
+  };
+}
 
 describe('Source adapter validation', () => {
   it('rss adapter rejects empty feed URL', () => {
@@ -80,7 +114,10 @@ describe('YouTube adapter missing API key', () => {
     };
 
     await expect(
-      youtubeChannelAdapter.fetchRecentItems(source, { maxItems: 5, lookbackHours: 168 }, null),
+      youtubeChannelAdapter.fetchRecentItems(source, { maxItems: 5, lookbackHours: 168 }, {
+        ...makeConfig(),
+        youtubeApiKey: null,
+      } as AppConfig),
     ).rejects.toThrow(/YOUTUBE_API_KEY/);
   });
 });
