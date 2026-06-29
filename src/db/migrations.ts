@@ -153,24 +153,29 @@ const MIGRATIONS: Migration[] = [
       }
 
       if (tableExists(db, 'sources')) {
-        db.exec(`
-          CREATE TABLE sources_v3 (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            type            TEXT NOT NULL,
-            name            TEXT NOT NULL,
-            config_json     TEXT NOT NULL,
-            enabled         INTEGER NOT NULL DEFAULT 1,
-            last_checked_at TEXT,
-            last_success_at TEXT,
-            last_error      TEXT,
-            created_at      TEXT NOT NULL,
-            updated_at      TEXT NOT NULL
-          );
-          INSERT INTO sources_v3 SELECT * FROM sources;
-          DROP TABLE sources;
-          ALTER TABLE sources_v3 RENAME TO sources;
-          CREATE INDEX IF NOT EXISTS idx_sources_enabled ON sources(enabled);
-        `);
+        db.pragma('foreign_keys = OFF');
+        try {
+          db.exec(`
+            CREATE TABLE sources_v3 (
+              id              INTEGER PRIMARY KEY AUTOINCREMENT,
+              type            TEXT NOT NULL,
+              name            TEXT NOT NULL,
+              config_json     TEXT NOT NULL,
+              enabled         INTEGER NOT NULL DEFAULT 1,
+              last_checked_at TEXT,
+              last_success_at TEXT,
+              last_error      TEXT,
+              created_at      TEXT NOT NULL,
+              updated_at      TEXT NOT NULL
+            );
+            INSERT INTO sources_v3 SELECT * FROM sources;
+            DROP TABLE sources;
+            ALTER TABLE sources_v3 RENAME TO sources;
+            CREATE INDEX IF NOT EXISTS idx_sources_enabled ON sources(enabled);
+          `);
+        } finally {
+          db.pragma('foreign_keys = ON');
+        }
       }
     },
   },
