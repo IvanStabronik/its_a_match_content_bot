@@ -109,13 +109,13 @@ async function handleEditCaptionInput(
 ): Promise<void> {
   const text = ctx.message?.text ?? '';
   if (text.length > 1024) {
-    await ctx.reply('❌ Caption не может быть длиннее 1024 символов.');
+    await ctx.reply('❌ Текст не может быть длиннее 1024 символов.');
     return;
   }
 
   posts.update(postId, { caption: text });
   clearSession(ctx.from!.id);
-  await ctx.reply(`✅ Caption обновлён для кандидата #${postId}`);
+  await ctx.reply(`✅ Текст обновлён для кандидата #${postId}`);
 }
 
 async function handleIncomingContent(

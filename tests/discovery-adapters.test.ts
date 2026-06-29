@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getAdapter } from '../src/discovery/adapters/index.js';
-import { mapRssItem } from '../src/discovery/adapters/rss.js';
+import { mapRssItem, parseRssDate } from '../src/discovery/adapters/rss.js';
 import { youtubeChannelAdapter } from '../src/discovery/adapters/youtube.js';
 
 describe('Source adapter validation', () => {
@@ -45,6 +45,22 @@ describe('RSS item mapping', () => {
 
   it('returns null when link is missing', () => {
     expect(mapRssItem({ title: 'No link' })).toBeNull();
+  });
+
+  it('parseRssDate returns null for invalid dates without throwing', () => {
+    expect(parseRssDate('not-a-date')).toBeNull();
+    expect(parseRssDate('')).toBeNull();
+    expect(parseRssDate(undefined)).toBeNull();
+    const item = mapRssItem({
+      title: 'Bad date',
+      link: 'https://example.com/x',
+      pubDate: 'totally-invalid',
+    });
+    expect(item?.publishedAt).toBeNull();
+  });
+
+  it('parseRssDate parses valid ISO dates', () => {
+    expect(parseRssDate('2026-06-01T10:00:00.000Z')).toBe('2026-06-01T10:00:00.000Z');
   });
 });
 

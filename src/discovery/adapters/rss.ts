@@ -6,12 +6,19 @@ const parser = new Parser({
   headers: { 'User-Agent': 'ItsAMatchContentBot/2.0' },
 });
 
+export function parseRssDate(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 export function mapRssItem(item: Parser.Item, feedTitle?: string): DiscoveredItem | null {
   const link = item.link?.trim() || item.guid?.trim();
   if (!link) return null;
 
   const externalId = item.guid?.trim() || link;
-  const publishedAt = item.isoDate ?? item.pubDate ?? null;
+  const publishedAt = parseRssDate(item.isoDate ?? item.pubDate ?? null);
 
   return {
     platform: 'rss',
@@ -20,7 +27,7 @@ export function mapRssItem(item: Parser.Item, feedTitle?: string): DiscoveredIte
     title: item.title?.trim() || null,
     description: (item.contentSnippet || item.content || item.summary || '').trim().slice(0, 2000) || null,
     author: item.creator?.trim() || feedTitle?.trim() || null,
-    publishedAt: publishedAt ? new Date(publishedAt).toISOString() : null,
+    publishedAt,
     thumbnailUrl: item.enclosure?.url ?? null,
     raw: item,
   };

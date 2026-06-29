@@ -2,6 +2,7 @@ import type { Bot } from 'grammy';
 import type { AppConfig } from '../config.js';
 import { logger } from '../logger.js';
 import type { DiscoveryService } from '../discovery/service.js';
+import { buildDiscoveryAdminNotification } from './discovery-notify.js';
 
 export class DiscoveryScheduler {
   private intervalId: ReturnType<typeof setInterval> | null = null;
@@ -51,26 +52,16 @@ export class DiscoveryScheduler {
         errorCount: summary.errors.length,
       });
 
-      if (summary.newCandidates > 0) {
-        const text = `🔎 Найдено новых кандидатов: ${summary.newCandidates}. Откройте /queue для модерации.`;
+      const notification = buildDiscoveryAdminNotification(summary);
+      if (notification) {
         for (const adminId of this.config.adminTelegramIds) {
           try {
-            await bot.api.sendMessage(adminId, text);
+            await bot.api.sendMessage(adminId, notification);
           } catch (err) {
             logger.warn('discovery-scheduler', 'Admin notification failed', {
               adminId,
               error: err instanceof Error ? err.message : String(err),
             });
-          }
-        }
-      } else if (summary.errors.length > 0) {
-        const serious = summary.errors.slice(0, 3).join('\n');
-        const text = `⚠️ Ошибки при проверке источников:\n${serious}`;
-        for (const adminId of this.config.adminTelegramIds) {
-          try {
-            await bot.api.sendMessage(adminId, text);
-          } catch {
-            // ignore
           }
         }
       }

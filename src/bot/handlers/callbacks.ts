@@ -159,8 +159,8 @@ export function registerCallbackHandlers(
 
     posts.update(postId, { caption: variant });
     clearSession(ctx.from.id);
-    await ctx.answerCallbackQuery({ text: 'Caption обновлён' });
-    await ctx.reply(`✅ Caption обновлён для #${postId}`);
+    await ctx.answerCallbackQuery({ text: 'Текст обновлён' });
+    await ctx.reply(`✅ Текст обновлён для #${postId}`);
   });
 
   bot.callbackQuery(/^rewrite:cancel:(\d+)$/, async (ctx) => {
@@ -179,7 +179,7 @@ export function registerCallbackHandlers(
 
     setSession(ctx.from.id, { type: 'edit_caption', postId });
     await ctx.answerCallbackQuery();
-    await ctx.reply('📝 Отправьте новый caption (до 1024 символов):');
+    await ctx.reply('📝 Отправьте новый текст (до 1024 символов):');
   });
 
   bot.callbackQuery(/^mod:skip:(\d+)$/, async (ctx) => {

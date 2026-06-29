@@ -1,5 +1,6 @@
 import type { Db } from '../db/connection.js';
-import type { CreateSourceInput, Source, SourceItem, SourceType } from '../types.js';
+import type { CreateSourceInput, Post, Source, SourceItem, SourceType } from '../types.js';
+import type { PostRepository } from './posts.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -156,6 +157,46 @@ export class SourceItemRepository {
     this.db
       .prepare('UPDATE source_items SET candidate_post_id = ? WHERE id = ?')
       .run(postId, itemId);
+  }
+
+  createSkippedItem(input: {
+    sourceId: number;
+    platform: string;
+    externalId: string;
+    url: string;
+    title?: string | null;
+    description?: string | null;
+    author?: string | null;
+    publishedAt?: string | null;
+    thumbnailUrl?: string | null;
+    raw?: unknown;
+  }): SourceItem {
+    return this.create(input);
+  }
+
+  createCandidateWithPost(
+    posts: PostRepository,
+    itemInput: {
+      sourceId: number;
+      platform: string;
+      externalId: string;
+      url: string;
+      title?: string | null;
+      description?: string | null;
+      author?: string | null;
+      publishedAt?: string | null;
+      thumbnailUrl?: string | null;
+      raw?: unknown;
+    },
+    buildPostInput: (sourceItemId: number) => import('../types.js').CreatePostInput,
+  ): { sourceItem: SourceItem; post: import('../types.js').Post } {
+    const txn = this.db.transaction(() => {
+      const sourceItem = this.create(itemInput);
+      const post = posts.create(buildPostInput(sourceItem.id));
+      this.linkCandidate(sourceItem.id, post.id);
+      return { sourceItem, post };
+    });
+    return txn();
   }
 }
 

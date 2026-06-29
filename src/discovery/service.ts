@@ -5,6 +5,7 @@ import { checkForbiddenContent, mergeWarnings } from '../services/content-filter
 import type { PostRepository } from '../services/posts.js';
 import type { SourceItemRepository, SourceRepository } from '../services/sources.js';
 import type { Source } from '../types.js';
+import { resolveChannelId } from './adapters/youtube.js';
 import { getAdapter } from './adapters/index.js';
 import type { DiscoveredItem, DiscoveryRunResult, DiscoverySummary } from './types.js';
 
@@ -12,6 +13,8 @@ export function buildTemplateCaption(item: DiscoveredItem): string {
   const title = item.title?.trim() || 'Интересный материал';
   return `Нашёл материал по теме отношений и общения.\n\n${title}\n\nЧто думаете?`;
 }
+
+export type CreateCandidateResult = 'created' | 'duplicate' | 'skipped_low_score';
 
 export class DiscoveryService {
   constructor(
@@ -61,6 +64,26 @@ export class DiscoveryService {
     };
   }
 
+  private async persistYouTubeChannelId(source: Source): Promise<void> {
+    if (source.type !== 'youtube_channel' || !this.config.youtubeApiKey) return;
+
+    const config = this.sources.getConfig(source);
+    const input = String(config.input ?? config.channelId ?? '').trim();
+    if (!input) return;
+
+    try {
+      const channelId = await resolveChannelId(input, this.config.youtubeApiKey, config);
+      if (config.channelId !== channelId) {
+        this.sources.updateConfig(source.id, { ...config, channelId, input: config.input ?? input });
+      }
+    } catch (err) {
+      logger.warn('discovery', 'Failed to persist YouTube channelId', {
+        sourceId: source.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   private async processSource(source: Source): Promise<DiscoveryRunResult> {
     const result: DiscoveryRunResult = {
       sourceId: source.id,
@@ -86,12 +109,15 @@ export class DiscoveryService {
     };
 
     try {
-      const items = await adapter.fetchRecentItems(source, limits, this.config.youtubeApiKey);
-      result.found = items.length;
+      await this.persistYouTubeChannelId(source);
 
-      if (source.type === 'youtube_channel' && config.channelId) {
-        this.sources.updateConfig(source.id, { ...config, channelId: config.channelId });
-      }
+      const refreshedSource = this.sources.getById(source.id) ?? source;
+      const items = await adapter.fetchRecentItems(
+        refreshedSource,
+        limits,
+        this.config.youtubeApiKey,
+      );
+      result.found = items.length;
 
       if (!this.config.discoveryAutoCreateCandidates) {
         this.sources.markChecked(source.id, null);
@@ -111,8 +137,8 @@ export class DiscoveryService {
         const keywordWarnings = checkForbiddenContent(textForFilter);
 
         try {
-          const created = await this.createCandidate(source, item, keywordWarnings);
-          if (created) {
+          const outcome = await this.createCandidate(source, item, keywordWarnings);
+          if (outcome === 'created') {
             result.newCandidates++;
           } else {
             result.duplicatesSkipped++;
@@ -138,9 +164,9 @@ export class DiscoveryService {
     source: Source,
     item: DiscoveredItem,
     keywordWarnings: import('../types.js').Warning[],
-  ): Promise<boolean> {
+  ): Promise<CreateCandidateResult> {
     const existing = this.sourceItems.findByPlatformExternalId(item.platform, item.externalId);
-    if (existing) return false;
+    if (existing) return 'duplicate';
 
     let caption = buildTemplateCaption(item);
     let category: import('../types.js').PostCategory | null = null;
@@ -159,7 +185,19 @@ export class DiscoveryService {
         riskReason = generated.riskReason;
 
         if (this.config.discoveryMinScore > 0 && aiScore < this.config.discoveryMinScore) {
-          return false;
+          this.sourceItems.createSkippedItem({
+            sourceId: source.id,
+            platform: item.platform,
+            externalId: item.externalId,
+            url: item.url,
+            title: item.title,
+            description: item.description,
+            author: item.author,
+            publishedAt: item.publishedAt,
+            thumbnailUrl: item.thumbnailUrl,
+            raw: item.raw,
+          });
+          return 'skipped_low_score';
         }
 
         if (generated.warnings.length > 0) {
@@ -178,7 +216,8 @@ export class DiscoveryService {
       }
     }
 
-    const sourceItem = this.sourceItems.create({
+    const now = new Date().toISOString();
+    const itemInput = {
       sourceId: source.id,
       platform: item.platform,
       externalId: item.externalId,
@@ -189,10 +228,9 @@ export class DiscoveryService {
       publishedAt: item.publishedAt,
       thumbnailUrl: item.thumbnailUrl,
       raw: item.raw,
-    });
+    };
 
-    const now = new Date().toISOString();
-    const post = this.posts.create({
+    this.sourceItems.createCandidateWithPost(this.posts, itemInput, (sourceItemId) => ({
       type: 'link',
       status: 'pending',
       source_url: item.url,
@@ -204,15 +242,14 @@ export class DiscoveryService {
       risk_reason: riskReason,
       warnings,
       discovery_source_id: source.id,
-      discovery_item_id: sourceItem.id,
+      discovery_item_id: sourceItemId,
       source_title: item.title,
       source_author: item.author,
       thumbnail_url: item.thumbnailUrl,
       discovered_at: now,
       created_by: 'discovery',
-    });
+    }));
 
-    this.sourceItems.linkCandidate(sourceItem.id, post.id);
-    return true;
+    return 'created';
   }
 }
